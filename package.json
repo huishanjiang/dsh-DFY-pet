@@ -1,0 +1,62 @@
+{
+  "name": "dsh-dfy-pet",
+  "version": "2.6.1",
+  "description": "A chibi DeepSeek whale-girl desktop pet with right-click AI relay provider configuration and an OpenCode Go model/pricing/quota monitor.",
+  "license": "Apache-2.0",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "desktop-pet",
+    "opencode-go",
+    "client-plugin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/huishanjiang/dsh-DFY-pet.git"
+  },
+  "homepage": "https://github.com/huishanjiang/dsh-DFY-pet#readme",
+  "bugs": {
+    "url": "https://github.com/huishanjiang/dsh-DFY-pet/issues"
+  },
+  "engines": {
+    "node": ">=18",
+    "dsh": ">=0.2.1-rc.2 <0.3.0"
+  },
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.png"
+  },
+  "files": [
+    "index.js",
+    "monitor.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.png",
+    "assets/pet-sheet.webp",
+    "LICENSE",
+    "NOTICE.md",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "@deepseek-ai/dsh-credentials": ">=0.2.1-rc.2 <0.3.0"
+  }
+}

@@ -1,0 +1,3 @@
+- insert: # 向配置树插入插件条目
+    - id: deepseek-pet # 条目 id，删除或禁用时按它定位
+      name: 'dsh-dfy-pet' # 已发布的包名，npm 安装后由此解析
