@@ -25,9 +25,9 @@ window.__ModuleLoader__.load({
     const RELAY_NS = 'llm-pi-ai'; // 中转站供应商写入的 Host 设置命名空间
     const ROUTE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/; // 供应商 ID 必须能同时作为设置键与凭据前缀
     const PROTOCOLS = [['openai-completions', 'protoChat'], ['openai-responses', 'protoResponses'], ['anthropic-messages', 'protoMessages']]; // 支持的中转站协议及其文案键
-    const MENU_WIDTH = 232; // 右键菜单宽度，用于贴边修正
-    const MENU_HEIGHT = 180; // 菜单含展开子菜单时的高度，用于贴边修正
-    const OPENCODE_ROUTE = 'api/deepseek-pet/opencode'; // OpenCode 监控路由的文档相对地址
+    const MENU_GAP = 8; // 菜单与窗口边缘的最小间距
+
+    const OPENCODE_ROUTE = 'api/deepseek-pet/opencode'; // OpenCode 监控路由的文档相对地址（默认）
     const OPENCODE_UNSEEN_KEY = 'dsh.deepseek-pet.opencode.unseen'; // 未查看变动标记的本地键
     const OPENCODE_AUTO_KEY = 'dsh.deepseek-pet.opencode.autoHours'; // 自动检查间隔的本地键
     const OPENCODE_HIDDEN_KEY = 'dsh.deepseek-pet.opencode.hiddenSeries'; // 图例隐藏状态的本地键
@@ -35,6 +35,10 @@ window.__ModuleLoader__.load({
     const OPENCODE_SORT_KEY = 'dsh.deepseek-pet.opencode.sortField'; // 排序字段的本地键
     const OPENCODE_SORT_DIR_KEY = 'dsh.deepseek-pet.opencode.sortDir'; // 排序方向的本地键
     const OPENCODE_SORT_FIELDS = ['go', 'goPlus', 'goTeams']; // 允许的用量排序字段
+    const OPENCODE_USAGE_URL_KEY = 'dsh.deepseek-pet.opencode.usageUrl'; // 自定义用量来源的本地键
+    const OPENCODE_USAGE_FALLBACK_KEY = 'dsh.deepseek-pet.opencode.usageFallbackUrl'; // 备用用量来源的本地键
+    const OPENCODE_ORG_KEY = 'dsh.deepseek-pet.opencode.orgId'; // 团队工作区 id 的本地键
+    const OPENCODE_USAGE_WINDOWS = [['rolling', 'ocWindowRolling'], ['weekly', 'ocWindowWeekly'], ['monthly', 'ocWindowMonthly']]; // 与服务端一致的三个窗口
     const CHAT_MODEL_KEY = 'dsh.deepseek-pet.chat.model'; // 对话面板所选模型的本地键
     const CHAT_SESSION_KEY = 'dsh.deepseek-pet.chat.sessionId'; // 对话专用会话身份的本地键，重开页面后还能接着聊
     const CHAT_REPLY_TIMEOUT_MS = 120000; // 单次回复最长等待时间，超时给出提示而不是一直转圈
@@ -98,9 +102,26 @@ window.__ModuleLoader__.load({
         savedBubble: 'Relay ready — pick a model!', // 保存后宠物台词
         ocMenu: 'OpenCode model monitor', // 监控一级菜单
         ocTitle: 'OpenCode Go model monitor', // 监控面板标题
-        ocDesc: 'Diffs Included models, token prices and monthly quotas. Usage balance is never read.', // 监控说明
+        ocDesc: 'Diffs Included models, token prices and monthly quotas. Remaining allowance is read only when you press the usage button.', // 监控说明
         ocCheck: 'Check for changes now', // 立即检查子操作
         ocHistory: 'View recent changes', // 查看历史子操作
+        ocUsage: 'Remaining usage', // 剩余用量子操作
+        ocUsageTitle: 'OpenCode Go remaining usage', // 用量面板标题
+        ocUsageDesc: 'Rolling 5-hour, weekly and monthly allowance left on the current plan, read from the OpenCode usage endpoint.', // 用量面板说明
+        ocUsageRefresh: 'Refresh usage', // 刷新按钮
+        ocUsageRunning: 'Reading usage…', // 查询中
+        ocWindowRolling: '5 hours', // 滚动窗口
+        ocWindowWeekly: 'This week', // 每周窗口
+        ocWindowMonthly: 'This month', // 每月窗口
+        ocUsageRemaining: 'left', // 剩余百分比后置词
+        ocUsageUsed: 'used', // 已用
+        ocUsageReset: 'Resets', // 重置时间前缀
+        ocUsageLimited: 'Limit reached', // 达到上限
+        ocUsageStale: 'Showing the last saved reading; this refresh failed.', // 展示旧数据
+        ocUsageNoData: 'No allowance reading yet. Press refresh once a key is saved.', // 首次无数据
+        ocUsageOpenConsole: 'Open OpenCode Console', // 打开控制台
+        ocUsagePartial: 'Some sources failed', // 部分来源失败
+        ocUsageSource: 'Source', // 来源标签前缀
         ocKey: 'OpenCode API Key', // Key 字段
         ocKeyHint: 'Stored write-only; leave blank to reuse the saved key.', // Key 提示
         ocKeySaved: 'Key saved (leave blank to reuse)', // 已保存占位
@@ -234,9 +255,26 @@ window.__ModuleLoader__.load({
         savedBubble: '中转站配好啦，去选个模型吧！', // 保存后宠物台词
         ocMenu: 'OpenCode 模型监控', // 监控一级菜单
         ocTitle: 'OpenCode Go 模型监控', // 监控面板标题
-        ocDesc: '对比 Included models、单价与月度配额；不读取用量余额。', // 监控说明
+        ocDesc: '对比 Included models、单价与月度配额；剩余用量只在点「剩余用量」时读取。', // 监控说明
         ocCheck: '立即检查变动', // 立即检查子操作
         ocHistory: '查看最近变动记录', // 查看历史子操作
+        ocUsage: '剩余用量', // 剩余用量子操作
+        ocUsageTitle: 'OpenCode Go 剩余用量', // 用量面板标题
+        ocUsageDesc: '显示当前套餐在 5 小时滚动、每周、每月三个窗口里的剩余额度，数据来自 OpenCode 用量接口。', // 用量面板说明
+        ocUsageRefresh: '刷新用量', // 刷新按钮
+        ocUsageRunning: '正在读取用量…', // 查询中
+        ocWindowRolling: '5 小时', // 滚动窗口
+        ocWindowWeekly: '本周', // 每周窗口
+        ocWindowMonthly: '本月', // 每月窗口
+        ocUsageRemaining: '剩余', // 剩余百分比后置词
+        ocUsageUsed: '已用', // 已用
+        ocUsageReset: '重置于', // 重置时间前缀
+        ocUsageLimited: '已达上限', // 达到上限
+        ocUsageStale: '这是上次保存的读数，本次刷新失败了。', // 展示旧数据
+        ocUsageNoData: '还没有额度读数；保存 Key 后点一次刷新。', // 首次无数据
+        ocUsageOpenConsole: '打开 OpenCode Console', // 打开控制台
+        ocUsagePartial: '部分来源请求失败', // 部分来源失败
+        ocUsageSource: '来源', // 来源标签前缀
         ocKey: 'OpenCode API Key', // Key 字段
         ocKeyHint: '只写不读回；留空沿用已保存的 Key。', // Key 提示
         ocKeySaved: '已保存 Key（留空沿用）', // 已保存占位
@@ -459,7 +497,7 @@ window.__ModuleLoader__.load({
     animation: none !important;
   }
 }
-.dspet-menu { position: fixed; z-index: 60; min-width: 216px; padding: 6px; border-radius: 12px; background: var(--dsw-alias-bg-overlay, #ffffff); border: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, .12)); box-shadow: 0 12px 32px rgba(12, 22, 64, .22); pointer-events: auto; } /* 右键菜单卡片 */
+.dspet-menu { position: fixed; z-index: 60; min-width: 216px; max-height: calc(100vh - 16px); overflow-y: auto; overscroll-behavior: contain; padding: 6px; border-radius: 12px; background: var(--dsw-alias-bg-overlay, #ffffff); border: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, .12)); box-shadow: 0 12px 32px rgba(12, 22, 64, .22); pointer-events: auto; } /* 右键菜单卡片，超高时自身滚动而不是溢出窗口 */
 .dspet-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 10px; border: 0; border-radius: 8px; background: none; color: var(--dsw-alias-label-primary, #1b1b1f); font: inherit; font-size: 13px; line-height: 20px; text-align: left; cursor: pointer; } /* 菜单项按钮 */
 .dspet-menu-item:hover, .dspet-menu-item:focus-visible { background: var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, .05)); outline: none; } /* 菜单项悬停与聚焦 */
 .dspet-menu-icon { flex: none; width: 16px; height: 16px; color: var(--dsw-alias-label-secondary, #6b6b76); } /* 菜单项图标 */
@@ -493,8 +531,8 @@ window.__ModuleLoader__.load({
 .dspet-manual { display: flex; gap: 6px; margin-top: 8px; } /* 手动添加行 */
 .dspet-manual .dspet-input { flex: 1; } /* 手动输入占满剩余宽度 */
 .dspet-menu-caret { margin-left: auto; width: 14px; height: 14px; color: var(--dsw-alias-label-secondary, #6b6b76); } /* 子菜单箭头 */
-.dspet-submenu { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 4px 24px; } /* 展开的子菜单 */
-.dspet-menu-subitem { padding: 7px 8px; font-size: 12px; } /* 子菜单项 */
+.dspet-submenu { position: fixed; z-index: 61; min-width: 168px; } /* 二级菜单浮在一级菜单旁边，层级更高以免被父菜单遮住 */
+
 .dspet-badge { position: absolute; top: 6px; right: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--dsw-alias-state-warn-primary, #d97706); box-shadow: 0 0 0 3px var(--dsw-alias-bg-layer-1, #ffffff); animation: dspet-badge-pulse 2s ease-in-out infinite; pointer-events: none; } /* 未查看变动提示点 */
 @keyframes dspet-badge-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.25); opacity: .75; } } /* 提示点呼吸 */
 @media (prefers-reduced-motion: reduce) { .dspet-badge { animation: none !important; } } /* 减少动态时静止 */
@@ -568,6 +606,19 @@ window.__ModuleLoader__.load({
 .dspet-status-id { color: var(--dsw-alias-label-secondary, #6b6b76); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; } /* 模型 id */
 .dspet-status-meta { margin-top: 2px; color: var(--dsw-alias-label-secondary, #6b6b76); font-size: 11px; line-height: 1.5; } /* 价格与配额 */
 .dspet-status-quota { display: block; } /* 配额独立一行 */
+.dspet-usage { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; } /* 三个额度窗口纵向排列 */
+.dspet-usage-card { padding: 8px 10px; border: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, .12)); border-radius: 8px; background: var(--dsw-alias-bg-base, #ffffff); } /* 单个窗口卡片 */
+.dspet-usage-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 600; } /* 窗口标题与百分比 */
+.dspet-usage-value { font-size: 18px; font-weight: 700; } /* 剩余百分比数字 */
+.dspet-usage-unit { margin-left: 2px; font-size: 11px; font-weight: 400; color: var(--dsw-alias-label-secondary, #6b6b76); } /* 百分比后缀 */
+.dspet-usage-track { height: 8px; margin: 6px 0 4px; border-radius: 999px; background: var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, .08)); overflow: hidden; } /* 进度槽 */
+.dspet-usage-bar { height: 100%; border-radius: 999px; background: #4d6bfe; transition: width .25s ease; } /* 剩余比例条 */
+.dspet-usage-bar[data-level="low"] { background: #f2994a; } /* 剩余低于 30% 转为橙色 */
+.dspet-usage-bar[data-level="empty"] { background: #eb5757; } /* 剩余低于 10% 转为红色 */
+.dspet-usage-meta { display: flex; flex-wrap: wrap; gap: 8px; color: var(--dsw-alias-label-secondary, #6b6b76); font-size: 11px; } /* 已用与重置时间 */
+.dspet-usage-limit { color: #eb5757; font-weight: 600; } /* 达到上限提示 */
+.dspet-usage-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; } /* 用量面板按钮行 */
+.dspet-usage-source { width: 100%; } /* 用量来源输入占满一行 */
 .dspet-tabs { display: flex; gap: 4px; margin: 8px 0 6px; } /* 图表切换 */
 .dspet-tab { padding: 3px 10px; border: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, .12)); border-radius: 999px; background: none; color: var(--dsw-alias-label-secondary, #6b6b76); font: inherit; font-size: 11px; cursor: pointer; } /* 图表切换按钮 */
 .dspet-tab[aria-pressed="true"] { background: var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, .06)); color: var(--dsw-alias-label-primary, #1b1b1f); border-color: var(--dsw-alias-border-l2, rgba(0, 0, 0, .2)); } /* 选中态 */
@@ -894,6 +945,22 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         const translate = ctx.locale.bind(NS);
 
+        // 把文档相对路由换算成浏览器地址：默认保持文档相对写法（与 DSH 自身接口一致）；
+        // 桌面端页面跑在 dsh-app:// 自定义协议下，文档相对地址会解析成 /web/api/... 而 404，
+        // 因此只要能拿到 http(s) 同源地址就用绝对地址；拿不到才退回 DSH 的文档相对约定。
+        const routeUrl = (path) => { // 生成一次请求地址
+          const clean = path.replace(/^\/+/, ''); // 去掉可能的前导斜杠，统一后面拼接
+          const candidates = [globalThis.location?.origin, typeof document === 'object' && document !== null ? document.baseURI : null]; // 依次尝试页面来源与文档基准
+          for (const candidate of candidates) { // 逐个检查可用来源
+            if (typeof candidate !== 'string' || candidate.length === 0) continue; // 跳过空值
+            let origin = ''; // 解析出的来源
+            try { origin = new URL(candidate).origin; } catch (error) { continue; } // 解析失败换下一个
+            if (origin === 'null' || !/^https?:\/\//i.test(origin)) continue; // 自定义协议没有可直连的 /api
+            return `${origin}/${clean}`; // 同源绝对地址，保证 pathname 与注册路径完全一致
+          } // 结束来源遍历
+          return path; // 非 http(s) 页面只能交给宿主按文档相对转运
+        }; // 结束地址生成
+
         ctx.effect(
           () => ctx.locale.register(NS, 'en', DICTS.en),
           'deepseek-pet: en dictionary',
@@ -1122,9 +1189,9 @@ window.__ModuleLoader__.load({
           const loadHistory = async () => { // 加载历史
             setHistoryBusy(true); setHistoryError(''); // 进入加载
             try { // 捕获失败
-              const response = await fetch(`${OPENCODE_ROUTE}/history?limit=20`, { headers: { accept: 'application/json' } }); // 请求历史
+              const response = await fetch(routeUrl(`${OPENCODE_ROUTE}/history?limit=20`), { headers: { accept: 'application/json' } }); // 请求历史
               const payload = await response.json().catch(() => ({ ok: false, error: `HTTP ${response.status}` })); // 解析响应
-              if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`); // 检查状态
+              if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}（请求地址 ${response.url || routeUrl(`${OPENCODE_ROUTE}/history?limit=20`)}）`); // 检查状态并带上实际地址便于排查
               setHistory(payload.checks ?? []); setHasKey(payload.hasKey === true); props.onHistoryViewed(); // 保存并清除标记
             } catch (cause) { // 加载失败
               setHistoryError(cause instanceof Error ? cause.message : String(cause)); // 显示错误
@@ -1135,9 +1202,9 @@ window.__ModuleLoader__.load({
 
           const loadStatus = async () => { // 读取最近状态
             try { // 捕获失败
-              const response = await fetch(`${OPENCODE_ROUTE}/status`, { headers: { accept: 'application/json' } }); // 请求状态
+              const response = await fetch(routeUrl(`${OPENCODE_ROUTE}/status`), { headers: { accept: 'application/json' } }); // 请求状态
               const payload = await response.json().catch(() => ({ ok: false, error: `HTTP ${response.status}` })); // 解析响应
-              if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`); // 检查状态
+              if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}（请求地址 ${response.url || routeUrl(`${OPENCODE_ROUTE}/status`)}）`); // 检查状态并带上实际地址便于排查
               if (payload.status) { setCurrent(payload.status); setHasKey(payload.hasKey === true); } // 保存状态
             } catch (cause) { // 状态读取失败
               setError((previous) => previous.length > 0 ? previous : (cause instanceof Error ? cause.message : String(cause))); // 不覆盖检查错误
@@ -1298,6 +1365,102 @@ window.__ModuleLoader__.load({
           ); // 结束遮罩
         } // 结束监控面板
 
+        function OpenCodeUsage(props) { // OpenCode Go 剩余用量面板
+          const t = props.t; // 翻译函数
+          const [apiKey, setApiKey] = React.useState(''); // 本次输入的 Key，留空沿用已保存的
+          const [busy, setBusy] = React.useState(false); // 是否正在查询
+          const [error, setError] = React.useState(''); // 查询错误
+          const [data, setData] = React.useState(null); // 最近读数
+          const [urlDraft, setUrlDraft] = React.useState(() => { try { return window.localStorage.getItem(OPENCODE_USAGE_URL_KEY) ?? ''; } catch (error) { return ''; } }); // 自定义来源
+          const [fallbackDraft, setFallbackDraft] = React.useState(() => { try { return window.localStorage.getItem(OPENCODE_USAGE_FALLBACK_KEY) ?? ''; } catch (error) { return ''; } }); // 备用来源
+          const [orgDraft, setOrgDraft] = React.useState(() => { try { return window.localStorage.getItem(OPENCODE_ORG_KEY) ?? ''; } catch (error) { return ''; } }); // 团队工作区 id
+          const [showAdvanced, setShowAdvanced] = React.useState(false); // 高级选项是否展开
+          const started = React.useRef(false); // 防止重复自动查询
+
+          const load = async () => { // 查询一次用量
+            setBusy(true); setError(''); // 进入查询
+            try { // 捕获失败
+              const payload = await props.runUsage({ apiKey: apiKey.trim(), usageUrl: urlDraft.trim(), fallbackUrl: fallbackDraft.trim(), orgId: orgDraft.trim() }); // 交给 Host 路由
+              setData(payload); setApiKey(''); // 保存读数并清空 Key
+              if (Array.isArray(payload.errors) && payload.errors.length > 0) setError(payload.errors.join('；')); // 部分来源失败也要告知
+            } catch (cause) { // 查询失败
+              setError(cause instanceof Error ? cause.message : String(cause)); // 显示原因
+            } finally { // 结束查询
+              setBusy(false); // 恢复按钮
+            } // 结束查询
+          }; // 结束查询函数
+          const loadRef = React.useRef(load); loadRef.current = load; // 自动查询使用最新闭包
+
+          React.useEffect(() => { // 打开时自动查一次
+            if (started.current) return; // 只执行一次
+            started.current = true; // 标记已执行
+            loadRef.current(); // 触发查询
+          }, []); // 只依赖首次挂载
+
+          React.useEffect(() => { // Escape 关闭
+            const onKeyDown = (event) => { if (event.key === 'Escape') props.onClose(); }; // 随时可关闭
+            window.addEventListener('keydown', onKeyDown); // 监听
+            return () => window.removeEventListener('keydown', onKeyDown); // 清理
+          }, [props.onClose]); // 依赖关闭回调
+
+          React.useEffect(() => { try { window.localStorage.setItem(OPENCODE_USAGE_URL_KEY, urlDraft.trim()); } catch (error) { /* 忽略存储失败 */ } }, [urlDraft]); // 持久化自定义来源
+          React.useEffect(() => { try { window.localStorage.setItem(OPENCODE_USAGE_FALLBACK_KEY, fallbackDraft.trim()); } catch (error) { /* 忽略存储失败 */ } }, [fallbackDraft]); // 持久化备用来源
+          React.useEffect(() => { try { window.localStorage.setItem(OPENCODE_ORG_KEY, orgDraft.trim()); } catch (error) { /* 忽略存储失败 */ } }, [orgDraft]); // 持久化组织 id
+
+          const maskClose = (event) => { if (event.target === event.currentTarget) props.onClose(); }; // 点遮罩关闭
+          const timeLabel = (value) => { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleString(); }; // 时间格式
+          const level = (remaining) => (remaining < 10 ? 'empty' : remaining < 30 ? 'low' : 'normal'); // 剩余比例对应的颜色档
+          const card = ([key, labelKey]) => { // 单个额度窗口卡片
+            const item = data?.windows?.[key]; // 该窗口的读数
+            return h('div', { key, className: 'dspet-usage-card' }, // 卡片容器
+              h('div', { className: 'dspet-usage-head' }, // 标题行
+                h('span', null, t(labelKey)), // 窗口名称
+                h('span', { className: 'dspet-usage-value' }, item ? `${item.remaining}%` : '—', h('span', { className: 'dspet-usage-unit' }, t('ocUsageRemaining'))), // 剩余百分比
+              ), // 结束标题行
+              h('div', { className: 'dspet-usage-track', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': item?.remaining ?? 0, 'aria-label': `${t(labelKey)} ${t('ocUsageRemaining')}` }, // 进度槽
+                h('div', { className: 'dspet-usage-bar', 'data-level': item ? level(item.remaining) : 'normal', style: { width: `${item?.remaining ?? 0}%` } }), // 剩余比例条
+              ), // 结束进度槽
+              h('div', { className: 'dspet-usage-meta' }, // 细节行
+                h('span', null, `${t('ocUsageUsed')} ${item ? item.percent : '—'}%`), // 已用百分比
+                h('span', null, item?.resetsAt ? `${t('ocUsageReset')} ${timeLabel(item.resetsAt)}` : `${t('ocUsageReset')} —`), // 重置时间
+                item?.limited ? h('span', { className: 'dspet-usage-limit' }, t('ocUsageLimited')) : null, // 达到上限
+              ), // 结束细节行
+            ); // 结束卡片
+          }; // 结束卡片函数
+          const sourceLabel = data?.source === 'official' ? 'opencode.ai' : data?.source === 'fallback' ? 'fallback' : data?.source === 'custom' ? 'custom' : '—'; // 来源标签
+          const summary = h('div', { className: 'dspet-monitor-summary' }, // 顶部摘要
+            data?.stale ? h('span', { className: 'dspet-chip' }, t('ocUsageStale')) : null, // 旧读数提示
+            h('span', { className: 'dspet-chip' }, `${t('ocUsageSource')} ${sourceLabel}`), // 数据来源
+            data?.fetchedAt ? h('span', { className: 'dspet-chip' }, timeLabel(data.fetchedAt)) : null, // 读数的抓取时间
+          ); // 结束摘要
+
+          return h('div', { className: 'dspet-modal', onPointerDown: maskClose }, // 遮罩
+            h('div', { className: 'dspet-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'dspet-usage-title' }, // 面板
+              h('h2', { id: 'dspet-usage-title', className: 'dspet-dialog-title' }, t('ocUsageTitle')), // 标题
+              h('p', { className: 'dspet-dialog-desc' }, t('ocUsageDesc')), // 说明
+              h('label', { className: 'dspet-field' }, // Key 字段
+                h('span', { className: 'dspet-field-label' }, t('ocKey')), // 字段名
+                h('input', { className: 'dspet-input', type: 'password', value: apiKey, autoComplete: 'new-password', placeholder: t('ocKeySaved'), 'aria-label': t('ocKey'), disabled: busy, onChange: (event) => setApiKey(event.target.value) }), // Key 输入
+                h('span', { className: 'dspet-field-hint' }, t('ocKeyHint')), // Key 提示
+              ), // 结束 Key 字段
+              h('div', { className: 'dspet-monitor-actions' }, // 操作行
+                h('button', { type: 'button', className: 'dspet-btn dspet-btn-primary', onClick: load, disabled: busy }, busy ? t('ocUsageRunning') : t('ocUsageRefresh')), // 刷新
+                h('button', { type: 'button', className: 'dspet-btn', onClick: () => setShowAdvanced((value) => !value), 'aria-expanded': showAdvanced }, t('ocUsageSource')), // 展开或收起来源选项
+                h('button', { type: 'button', className: 'dspet-btn', onClick: () => { if (data?.pageUrl) window.open(data.pageUrl, '_blank', 'noopener,noreferrer'); else window.open('https://opencode.ai/console', '_blank', 'noopener,noreferrer'); } }, t('ocUsageOpenConsole')), // 打开控制台
+              ), // 结束操作行
+              showAdvanced ? h('div', { className: 'dspet-usage-source' }, // 高级选项
+                h('label', { className: 'dspet-field' }, h('span', { className: 'dspet-field-label' }, 'usage URL'), h('input', { className: 'dspet-input', type: 'url', value: urlDraft, placeholder: 'https://opencode.ai/zen/go/v1/usage', 'aria-label': 'usage URL', disabled: busy, onChange: (event) => setUrlDraft(event.target.value) })), // 自定义来源
+                h('label', { className: 'dspet-field' }, h('span', { className: 'dspet-field-label' }, 'fallback URL'), h('input', { className: 'dspet-input', type: 'url', value: fallbackDraft, placeholder: 'https://…/zen/go/v1/usage', 'aria-label': 'fallback URL', disabled: busy, onChange: (event) => setFallbackDraft(event.target.value) })), // 备用来源
+                h('label', { className: 'dspet-field' }, h('span', { className: 'dspet-field-label' }, 'org id'), h('input', { className: 'dspet-input', type: 'text', value: orgDraft, placeholder: 'org_…', 'aria-label': 'org id', disabled: busy, spellCheck: false, onChange: (event) => setOrgDraft(event.target.value) })), // 团队工作区 id
+              ) : null, // 结束高级选项
+              error.length > 0 ? h('p', { className: 'dspet-error' }, `${t('ocError')}：${error}`) : null, // 错误
+              data === null && busy ? h('p', { className: 'dspet-field-hint' }, t('ocUsageRunning')) : null, // 首次加载提示
+              data === null || !data.windows || data.windows.rolling === null && data.windows.weekly === null && data.windows.monthly === null ? (busy ? null : h('p', { className: 'dspet-field-hint' }, t('ocUsageNoData'))) : h('div', null, summary, h('div', { className: 'dspet-usage' }, OPENCODE_USAGE_WINDOWS.map(card))), // 读数或空提示
+              h('div', { className: 'dspet-dialog-footer' }, h('button', { type: 'button', className: 'dspet-btn', onClick: props.onClose }, t('ocClose'))), // 关闭
+            ), // 结束面板
+          ); // 结束遮罩
+        } // 结束用量面板
+
         function Pet(props) {
           const [, setLocaleRevision] = React.useState(0);
           const [position, setPosition] = React.useState(loadPosition);
@@ -1313,10 +1476,14 @@ window.__ModuleLoader__.load({
           const [menu, setMenu] = React.useState(null); // 右键菜单坐标，null 表示关闭
           const [relayOpen, setRelayOpen] = React.useState(false); // 中转站配置框是否打开
           const menuRef = React.useRef(null); // 用于判断点击是否落在菜单内
+          const submenuRef = React.useRef(null); // 二级菜单容器，用于独立测量尺寸
+          const submenuAnchorRef = React.useRef(null); // 触发二级菜单的一级项，作为定位锚点
           const [monitorOpen, setMonitorOpen] = React.useState(false); // OpenCode 监控面板是否打开
           const [monitorView, setMonitorView] = React.useState('check'); // 监控初始视图
           const [monitorAutoCheck, setMonitorAutoCheck] = React.useState(false); // 打开监控时是否自动检查
-          const [monitorMenuOpen, setMonitorMenuOpen] = React.useState(false); // 监控子菜单是否展开
+          const [monitorMenuOpen, setMonitorMenuOpen] = React.useState(false); // 监控二级菜单是否展开
+          const [submenuPos, setSubmenuPos] = React.useState({ x: 0, y: 0, ready: false }); // 二级菜单的坐标，独立测量
+          const [usageOpen, setUsageOpen] = React.useState(false); // 剩余用量面板是否打开
           const [unseen, setUnseen] = React.useState(() => { try { return window.localStorage.getItem(OPENCODE_UNSEEN_KEY) === '1'; } catch (error) { return false; } }); // 未查看变动标记
           const [autoHours, setAutoHours] = React.useState(() => { try { const value = Number(window.localStorage.getItem(OPENCODE_AUTO_KEY)); return value === 6 || value === 24 ? value : 0; } catch (error) { return 0; } }); // 自动检查间隔
           const [chatOpen, setChatOpen] = React.useState(false); // 对话面板是否打开
@@ -1387,14 +1554,26 @@ window.__ModuleLoader__.load({
 
           const runOpenCodeCheck = async (apiKey, silent = false) => { // 调用 Host 检查路由
             const trimmed = typeof apiKey === 'string' ? apiKey.trim() : ''; // 统一 Key 输入
-            const response = await fetch(`${OPENCODE_ROUTE}/check`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(trimmed.length > 0 ? { apiKey: trimmed } : {}) }); // 发起检查
+            const response = await fetch(routeUrl(`${OPENCODE_ROUTE}/check`), { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(trimmed.length > 0 ? { apiKey: trimmed } : {}) }); // 发起检查
             const payload = await response.json().catch(() => ({ ok: false, error: `HTTP ${response.status}` })); // 解析响应
-            if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`); // 检查状态
+            if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}（请求地址 ${response.url || routeUrl(`${OPENCODE_ROUTE}/check`)}）`); // 检查状态并带上实际地址便于排查
             if (!silent) notifyOpenCode(payload); // 后台检查才弹气泡
             return payload; // 返回结果给面板
           }; // 结束检查调用
           const runCheckRef = React.useRef(runOpenCodeCheck); // 自动检查使用最新函数
           runCheckRef.current = runOpenCodeCheck; // 每次渲染更新引用
+
+          const runOpenCodeUsage = async (options = {}) => { // 调用 Host 额度路由
+            const body = {}; // 只带非空字段，避免覆盖已保存的 Key 与来源
+            if (typeof options.apiKey === 'string' && options.apiKey.trim().length > 0) body.apiKey = options.apiKey.trim(); // 本次输入的 Key
+            if (typeof options.usageUrl === 'string' && options.usageUrl.trim().length > 0) body.usageUrl = options.usageUrl.trim(); // 自定义来源
+            if (typeof options.fallbackUrl === 'string' && options.fallbackUrl.trim().length > 0) body.fallbackUrl = options.fallbackUrl.trim(); // 备用来源
+            if (typeof options.orgId === 'string' && options.orgId.trim().length > 0) body.orgId = options.orgId.trim(); // 团队工作区 id
+            const response = await fetch(routeUrl(`${OPENCODE_ROUTE}/usage`), { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout ? AbortSignal.timeout(30000) : undefined }); // 发起额度查询
+            const payload = await response.json().catch(() => ({ ok: false, error: `HTTP ${response.status}` })); // 解析响应
+            if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}（请求地址 ${response.url || routeUrl(`${OPENCODE_ROUTE}/usage`)}）`); // 检查状态并带上实际地址便于排查
+            return payload; // 返回给面板
+          }; // 结束额度调用
 
           const sendChat = async (text, modelKey) => { // 发送一条对话：先把用户消息落到列表，再等回复
             const id = 'chat-' + (chatSeq.current += 1); // 递增的稳定消息 id
@@ -1511,6 +1690,11 @@ window.__ModuleLoader__.load({
           }; // 结束模型目录读取
 
 
+          // 展开二级菜单：它浮在一级菜单右侧（右侧放不下时翻到左侧），不再把父菜单拉长
+          const toggleMonitorMenu = () => {
+            setMonitorMenuOpen((open) => !open); // 切换展开状态，位置由下方 effect 测量
+          }; // 结束二级菜单切换
+
           const openMonitor = (view, autoCheck) => { // 打开监控面板
             setMenu(null); // 关闭右键菜单
             setMonitorMenuOpen(false); // 收起子菜单
@@ -1519,6 +1703,11 @@ window.__ModuleLoader__.load({
             setMonitorOpen(true); // 打开面板
             clearUnseen(); // 视为已查看
           }; // 结束打开监控
+          const openUsage = () => { // 打开剩余用量面板
+            setMenu(null); // 关闭右键菜单
+            setMonitorMenuOpen(false); // 收起子菜单
+            setUsageOpen(true); // 打开面板
+          }; // 结束打开用量
           const onAutoHours = (value) => { // 保存自动检查频率
             setAutoHours(value); // 更新状态
             try { window.localStorage.setItem(OPENCODE_AUTO_KEY, String(value)); } catch (error) { /* 忽略存储失败 */ } // 持久化
@@ -1650,19 +1839,62 @@ window.__ModuleLoader__.load({
             return () => clearInterval(timer); // 清理定时器
           }, [autoHours]); // 频率变化时重设
 
+          // 方案一：菜单渲染出真实尺寸后再定位。位置未就绪时菜单不可见，量到尺寸才显示，
+          // 因此菜单再长也只会被收进视口，不依赖任何高度估算常量。
+          const useMenuLayout = typeof React.useLayoutEffect === 'function' ? React.useLayoutEffect : React.useEffect; // 兼容没有 useLayoutEffect 的宿主
+          useMenuLayout(() => { // 菜单打开后测量并修正位置
+            if (menu === null || menu.ready === true || menuRef.current === null) return; // 已定位或未渲染则不处理
+            const rect = menuRef.current.getBoundingClientRect(); // 菜单真实尺寸
+            const viewportWidth = window.innerWidth; // 当前窗口宽度，缩放或分屏后会变
+            const viewportHeight = window.innerHeight; // 当前窗口高度
+            const left = Math.max(MENU_GAP, Math.min(menu.x, viewportWidth - rect.width - MENU_GAP)); // 右边界超出时向左收
+            const top = Math.max(MENU_GAP, Math.min(menu.y, viewportHeight - rect.height - MENU_GAP)); // 下边界超出时向上收
+            setMenu({ ...menu, x: left, y: top, ready: true }); // 写入真实位置并标记可显示
+          }, [menu]); // 菜单状态变化时重新测量
+
+          // 二级菜单独立定位：贴着锚点右侧展开，右侧放不下翻到左侧，纵向超出则收进视口
+          useMenuLayout(() => { // 二级菜单挂载后测量
+            if (monitorMenuOpen === false || submenuRef.current === null || submenuAnchorRef.current === null) return; // 未展开或未渲染不处理
+            if (submenuPos.ready === true) return; // 已定位则跳过，避免反复设置
+            const anchor = submenuAnchorRef.current.getBoundingClientRect(); // 锚点位置
+            const rect = submenuRef.current.getBoundingClientRect(); // 二级菜单真实尺寸
+            const viewportWidth = window.innerWidth; // 当前窗口宽度
+            const viewportHeight = window.innerHeight; // 当前窗口高度
+            const rightSide = anchor.right + 4; // 首选贴右侧
+            const leftSide = anchor.left - rect.width - 4; // 右侧放不下时翻到左侧
+            const x = rightSide + rect.width <= viewportWidth - MENU_GAP ? rightSide : Math.max(MENU_GAP, leftSide); // 横向落点
+            const y = Math.max(MENU_GAP, Math.min(anchor.top, viewportHeight - rect.height - MENU_GAP)); // 与锚点顶部对齐后收边
+            setSubmenuPos({ x, y, ready: true }); // 写入真实位置
+          }, [monitorMenuOpen, submenuPos]); // 展开状态变化时重新测量
+
+          React.useEffect(() => { // 窗口尺寸变化时重新收边
+            if (menu === null || menu.ready !== true) return undefined; // 只在可见时处理
+            const onResize = () => setMenu((current) => (current === null ? current : { ...current, x: current.x, y: current.y, ready: false })); // 标记重新测量
+            window.addEventListener('resize', onResize); // 监听窗口尺寸
+            return () => window.removeEventListener('resize', onResize); // 清理监听
+          }, [menu === null ? null : menu.ready]); // 打开状态变化时重挂
+
           React.useEffect(() => { // 菜单打开时监听外部点击与 Escape
             if (menu === null) return undefined; // 关闭状态不装监听
             const closeMenu = (event) => { // 点击菜单外时收起
-              if (menuRef.current !== null && !menuRef.current.contains(event.target)) setMenu(null); // 只处理外部点击
+              const insideMain = menuRef.current !== null && menuRef.current.contains(event.target); // 是否点在原型菜单内
+              const insideSub = submenuRef.current !== null && submenuRef.current.contains(event.target); // 是否点在二级菜单内
+              if (!insideMain && !insideSub) { setMenu(null); setMonitorMenuOpen(false); } // 点外部时两个面板一起收起，避免二级菜单残留在屏幕上
             }; // 结束点击处理
-            const onEscape = (event) => { if (event.key === 'Escape') setMenu(null); }; // Escape 收起菜单
+            const onEscape = (event) => { // Escape 逐级收起
+              if (event.key !== 'Escape') return; // 只处理 Escape
+              if (monitorMenuOpen) { setMonitorMenuOpen(false); return; } // 先收二级菜单
+              setMenu(null); setMonitorMenuOpen(false); // 收起主菜单并确保二级也收起
+            }; // Escape 收起菜单
             window.addEventListener('pointerdown', closeMenu, true); // 捕获阶段先于宠物自身点击
             window.addEventListener('keydown', onEscape); // 监听全局按键
             return () => { // 清理监听
               window.removeEventListener('pointerdown', closeMenu, true); // 移除点击监听
               window.removeEventListener('keydown', onEscape); // 移除按键监听
             }; // 结束清理
-          }, [menu]); // 菜单开关变化时重装监听
+          }, [menu, monitorMenuOpen]); // 菜单开关变化时重装监听
+
+          React.useEffect(() => { if (monitorMenuOpen === false) setSubmenuPos({ x: 0, y: 0, ready: false }); }, [monitorMenuOpen]); // 收起后清掉旧坐标，下次重新测量
 
           const onPointerDown = (event) => {
             if (event.button !== undefined && event.button !== 0) return;
@@ -1734,11 +1966,10 @@ window.__ModuleLoader__.load({
             event.stopPropagation(); // 不影响上层浮层
             setMonitorMenuOpen(false); // 每次右键先收起监控子菜单
             drag.current = null; // 取消可能已开始的拖拽，避免随后 pointerup 触发摸头
-            const x = Math.min(event.clientX, window.innerWidth - MENU_WIDTH - 8); // 右侧贴边修正
-            const y = Math.min(event.clientY, window.innerHeight - MENU_HEIGHT - 8); // 底部贴边修正
-            setMenu({ x: Math.max(8, x), y: Math.max(8, y) }); // 记录最终位置
+            // 先按点击位置落点，等真实渲染出尺寸后由菜单自己的 effect 收进视口
+            setMenu({ x: event.clientX, y: event.clientY, ready: false }); // ready=false 时菜单隐形测量
           }; // 结束右键处理
-          const openRelay = () => { setMenu(null); setRelayOpen(true); }; // 菜单项打开配置框
+          const openRelay = () => { setMenu(null); setMonitorMenuOpen(false); setRelayOpen(true); }; // 打开配置框时两个菜单都收起
           const closeRelay = () => setRelayOpen(false); // 关闭配置框
           const onRelaySaved = () => { showBubble('savedBubble', 3200); }; // 保存成功后说一句
 
@@ -1811,7 +2042,7 @@ window.__ModuleLoader__.load({
             ),
             menu === null ? null : h( // 右键菜单
               'div', // 菜单容器
-              { ref: menuRef, className: 'dspet-menu', style: { left: menu.x + 'px', top: menu.y + 'px' }, role: 'menu' }, // 定位与语义
+              { ref: menuRef, className: 'dspet-menu', style: { left: menu.x + 'px', top: menu.y + 'px', visibility: menu.ready === true ? 'visible' : 'hidden' }, role: 'menu' }, // 定位与语义，测量阶段先隐形避免闪跳
               h( // 供应商配置菜单项
                 'button', // 可聚焦按钮
                 { type: 'button', className: 'dspet-menu-item', role: 'menuitem', onClick: openRelay, autoFocus: true }, // 点击打开配置
@@ -1822,7 +2053,7 @@ window.__ModuleLoader__.load({
               ), // 结束供应商菜单项
               h( // OpenCode 监控一级项
                 'button', // 可聚焦按钮
-                { type: 'button', className: 'dspet-menu-item', role: 'menuitem', 'aria-expanded': monitorMenuOpen, onClick: () => setMonitorMenuOpen((open) => !open) }, // 展开子菜单
+                { type: 'button', className: 'dspet-menu-item', role: 'menuitem', 'aria-haspopup': 'menu', 'aria-expanded': monitorMenuOpen, ref: submenuAnchorRef, onClick: toggleMonitorMenu }, // 打开独立的二级菜单
                 h('svg', { className: 'dspet-menu-icon', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', 'aria-hidden': true }, // 活动图标
                   h('path', { d: 'M3 12h4l3-8 4 16 3-8h4' }), // 活动折线路径
                 ), // 结束图标
@@ -1831,16 +2062,18 @@ window.__ModuleLoader__.load({
                   h('path', { d: 'M9 6l6 6-6 6' }), // 箭头路径
                 ), // 结束箭头
               ), // 结束监控一级项
-              monitorMenuOpen ? h( // 监控子菜单
-                'div', // 子菜单容器
-                { className: 'dspet-submenu', role: 'menu' }, // 子菜单语义
-                h('button', { type: 'button', className: 'dspet-menu-item dspet-menu-subitem', role: 'menuitem', onClick: () => openMonitor('check', true) }, t('ocCheck')), // 立即检查
-                h('button', { type: 'button', className: 'dspet-menu-item dspet-menu-subitem', role: 'menuitem', onClick: () => openMonitor('history', false) }, t('ocHistory')), // 查看记录
-              ) : null, // 结束子菜单
-            ), // 结束菜单
+            ), // 结束一级菜单
+            monitorMenuOpen ? h( // 二级菜单：浮在一级菜单旁边，不撑高父菜单
+              'div', // 二级菜单容器
+              { ref: submenuRef, className: 'dspet-menu dspet-submenu', style: { left: submenuPos.x + 'px', top: submenuPos.y + 'px', visibility: submenuPos.ready === true ? 'visible' : 'hidden' }, role: 'menu', 'aria-label': t('ocMenu') }, // 定位与语义，测量阶段先隐形
+              h('button', { type: 'button', className: 'dspet-menu-item', role: 'menuitem', onClick: () => openMonitor('check', true) }, t('ocCheck')), // 立即检查
+              h('button', { type: 'button', className: 'dspet-menu-item', role: 'menuitem', onClick: () => openMonitor('history', false) }, t('ocHistory')), // 查看记录
+              h('button', { type: 'button', className: 'dspet-menu-item', role: 'menuitem', onClick: openUsage }, t('ocUsage')), // 剩余用量
+            ) : null, // 结束二级菜单
             relayOpen ? h(RelayDialog, { t, onClose: closeRelay, onSaved: onRelaySaved }) : null, // 配置对话框
             monitorOpen ? h(OpenCodeMonitor, { t, view: monitorView, autoCheck: monitorAutoCheck, autoHours, onAutoHours, runCheck: runOpenCodeCheck, onClose: () => setMonitorOpen(false), onHistoryViewed: clearUnseen }) : null, // OpenCode 监控面板
             chatOpen ? h(ChatThread, { t, anchor: chatAnchor, messages: chatMessages, onSend: sendChat, onClose: closeChat, onClear: clearChat, loadModels: loadChatModels }) : null, // 双击弹出的对话面板，模型目录与清空由宠物侧处理
+            usageOpen ? h(OpenCodeUsage, { t, runUsage: runOpenCodeUsage, onClose: () => setUsageOpen(false) }) : null, // 剩余用量面板
           );
         }
 

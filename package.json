@@ -1,7 +1,7 @@
 {
   "name": "dsh-dfy-pet",
-  "version": "2.6.1",
-  "description": "A chibi DeepSeek whale-girl desktop pet with right-click AI relay provider configuration and an OpenCode Go model/pricing/quota monitor.",
+  "version": "2.8.0",
+  "description": "A chibi DeepSeek whale-girl desktop pet with right-click AI relay provider configuration, an OpenCode Go model/pricing/quota monitor, and a remaining-usage panel for the 5-hour, weekly and monthly Go allowance.",
   "license": "Apache-2.0",
   "keywords": [
     "deepseek-harness",

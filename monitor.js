@@ -3,6 +3,8 @@ import path from 'node:path'; // 路径拼接
 import os from 'node:os'; // 用户主目录
 
 export const MODELS_URL = 'https://opencode.ai/zen/go/v1/models'; // OpenCode Go 实时模型端点
+export const USAGE_URL = 'https://opencode.ai/zen/go/v1/usage'; // OpenCode Go 剩余额度端点，与桌面版同源
+export const CONSOLE_ORIGIN = 'https://opencode.ai/console'; // Console 站点根地址，用于替换接口来源与拼接用量页
 export const DOCS_URL = 'https://opencode.ai/docs/go/'; // 定价与月度配额文档
 export const SNAPSHOT_VERSION = 1; // 快照格式版本
 export const MAX_SNAPSHOTS = 50; // 本地最多保留的检查次数
@@ -398,3 +400,149 @@ export async function performCheck(options = {}) { // 执行一次检查
   const file = await writeSnapshot(snapshot, dir); // 原子写入
   return { ok: true, checkedAt: snapshot.checkedAt, baseline: diff.baseline, counts: diff.counts, added: diff.added, removed: diff.removed, changed: diff.changed, warnings: snapshot.warnings, models: snapshot.models, file, plans: (docs?.plans ?? []).map((plan) => plan.label) }; // 返回检查结果与当前模型
 } // 结束检查
+
+export const USAGE_WINDOWS = [ // 服务端返回的三个额度窗口，顺序即展示顺序
+  { key: 'rolling', labelKey: 'ocWindowRolling' }, // 5 小时滚动窗口
+  { key: 'weekly', labelKey: 'ocWindowWeekly' }, // 每周窗口
+  { key: 'monthly', labelKey: 'ocWindowMonthly' }, // 每月窗口
+]; // 结束窗口定义
+const MAX_CONSOLE_ORIGIN = 'https://console.opencode.ai'; // 旧版 Console 域名，需要改写到 opencode.ai 才能取到用量
+const USAGE_TIMEOUT_MS = 15000; // 用量接口超时，超时后仍要报出余额为空而不是整块失败
+
+function clampPercent(value) { // 把百分比收敛到 0-100
+  const number = numberOrNull(value); // 只接受有限数字
+  return number === null ? null : Math.max(0, Math.min(100, number)); // 越界值截断，非数字返回 null
+} // 结束百分比收敛
+
+function windowFromPayload(item) { // 解析单个额度窗口
+  const percent = clampPercent(item?.percent); // 已用百分比
+  if (percent === null) return null; // 缺字段视为该窗口无数据
+  const resetsAt = typeof item?.resetsAt === 'string' && Number.isFinite(Date.parse(item.resetsAt)) ? item.resetsAt : null; // 重置时刻，非法日期置空
+  return { percent, remaining: Math.max(0, Math.round((100 - percent) * 10) / 10), limited: item?.status === 'rate-limited', status: typeof item?.status === 'string' ? item.status : 'ok', resetsAt }; // 剩余百分比由已用推算
+} // 结束窗口解析
+
+export function parseUsagePayload(payload) { // 把 /zen/go/v1/usage 的响应转成内部结构
+  const usage = payload?.usage ?? {}; // 响应用 usage 包裹（实测为字符串百分比）
+  const windows = {}; // 三个窗口的结果
+  for (const window of USAGE_WINDOWS) { // 逐个窗口解析
+    windows[window.key] = windowFromPayload(usage[window.key]); // 缺数据时为 null
+  } // 结束窗口遍历
+  return { windows, fetchedAt: new Date().toISOString() }; // 附带抓取时间
+} // 结束用量解析
+
+export async function fetchUsage(apiKey, signal, options = {}) { // 读取 OpenCode Go 剩余额度
+  const key = typeof apiKey === 'string' ? apiKey.trim() : ''; // 统一 Key 输入
+  if (key.length === 0) throw new Error('还没有保存 OpenCode API Key，无法查询用量'); // 无 Key 直接给出可行动提示
+  const url = options.url ?? USAGE_URL; // 允许测试传入替身地址
+  const headers = { 'user-agent': 'deepseek-harness-opencode-go-monitor/1.0', accept: 'application/json', authorization: `Bearer ${key}` }; // 与桌面版相同的鉴权头
+  if (options.orgId) headers['x-opencode-org-id'] = options.orgId; // 团队工作区需要带上组织 id 才能看到本成员额度
+  const response = await fetchWithRetry(url, { headers, signal }, { timeoutMs: USAGE_TIMEOUT_MS, retries: 1 }); // 超时与一次重试
+  if (response.status === 401 || response.status === 403) { // 权限问题
+    await response.body?.cancel(); // 释放响应体
+    throw new Error(`用量查询认证失败（HTTP ${response.status}）：这个 Key 可能不是 Console 的 oc_sk_ 密钥，或当前 IP 被限制`); // 指向真正的失败原因
+  } // 结束权限分支
+  if (!response.ok) { // 其他状态码
+    await response.body?.cancel(); // 释放响应体
+    throw new Error(`用量接口返回 HTTP ${response.status}`); // 保留状态便于排查
+  } // 结束状态判断
+  const payload = await response.json().catch(() => null); // 解析 JSON，坏体按空处理
+  if (payload === null) throw new Error('用量接口返回了无法解析的内容'); // 明确失败而不是显示空白
+  const parsed = parseUsagePayload(payload); // 规范化结构
+  if (USAGE_WINDOWS.every((window) => parsed.windows[window.key] === null)) throw new Error('用量接口没有返回任何额度窗口'); // 结构变化时提示
+  return parsed; // 返回解析结果
+} // 结束用量抓取
+
+export function normalizeWebOrigin(raw) { // 校验并规范化用户填写的接口地址
+  const text = typeof raw === 'string' ? raw.trim() : ''; // 统一成字符串
+  if (text.length === 0) return null; // 空值表示未填写
+  let parsed; // 解析结果
+  try { // 解析 URL
+    parsed = new URL(text); // 构造 URL
+  } catch (error) { // 非法地址
+    throw new Error('接口地址不是合法的 URL'); // 明确错误
+  } // 结束解析
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error('接口地址必须是 http 或 https'); // 只接受网页协议
+  if (parsed.username.length > 0 || parsed.password.length > 0) throw new Error('接口地址不能包含账号密码'); // 拒绝把凭据塞进地址
+  return parsed.origin.replace(/^https:\/\/console\.opencode\.ai$/, MAX_CONSOLE_ORIGIN); // 旧域名统一改写到主站
+} // 结束地址规范化
+
+export function usagePageUrl(origin) { // 拼接 Console 用量页
+  return `${origin ?? MAX_CONSOLE_ORIGIN}/console`; // 没有自定义地址时指向默认 Console
+} // 结束用量页地址
+
+function usageFilePath(dir) { // 剩余额度缓存的路径
+  return path.join(dir, 'usage.json'); // 与模型快照同目录，便于一起清理
+} // 结束路径解析
+
+export async function readUsage(dir = snapshotDir()) { // 读取上一次成功保存的额度
+  try { // 容错读取
+    const raw = await fs.readFile(usageFilePath(dir), 'utf8'); // 读取文本
+    const parsed = JSON.parse(raw); // 解析 JSON
+    if (parsed && typeof parsed === 'object' && parsed.windows && typeof parsed.windows === 'object') return parsed; // 只接受有窗口的结构
+    return null; // 结构不符视为无缓存
+  } catch (error) { // 文件不存在或损坏
+    return null; // 缓存缺失不影响主流程
+  } // 结束容错
+} // 结束额度读取
+
+export async function writeUsage(usage, dir = snapshotDir()) { // 原子写入额度缓存
+  await fs.mkdir(dir, { recursive: true, mode: 0o700 }); // 保证目录存在且仅本人可读
+  const target = usageFilePath(dir); // 目标文件
+  const temp = path.join(dir, `.usage.json.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`); // 临时文件
+  try { // 写入过程
+    await fs.writeFile(temp, JSON.stringify(usage, null, 2), { mode: 0o600 }); // 只写额度，不含 Key
+    await fs.rename(temp, target); // 同目录原子替换
+  } catch (error) { // 写入失败
+    await fs.rm(temp, { force: true }); // 清理临时文件
+    throw error; // 继续抛出
+  } // 结束异常
+} // 结束额度写入
+
+export async function performUsageCheck(options = {}) { // 查询一次额度并缓存
+  const dir = options.dir ?? snapshotDir(); // 缓存目录
+  const apiKey = typeof options.apiKey === 'string' ? options.apiKey.trim() : ''; // 本次使用的 Key
+  const stored = await readUsage(dir); // 先取上次结果，失败时还能展示
+  const errors = []; // 各来源的失败原因
+  let usage = null; // 成功的额度
+  let source = 'models'; // 默认沿用上方的模型端点来源
+  let origin = null; // 实际使用的 Console 地址
+  const url = typeof options.usageUrl === 'string' && options.usageUrl.trim().length > 0 ? options.usageUrl.trim() : USAGE_URL; // 默认官方地址，可通过设置覆盖
+  try { // 允许使用自定义来源
+    origin = normalizeWebOrigin(url); // 自定义地址写入来源提示
+  } catch (error) { // 原始地址不是合法来源
+    origin = null; // 视为使用默认
+  } // 结束来源解析
+  if (apiKey.length > 0) { // 有 Key 才请求
+    try { // 主来源
+      const parsed = await fetchUsage(apiKey, options.signal, { url, orgId: options.orgId }); // 请求官方用量
+      usage = parsed; // 记录成功结果
+      source = url === USAGE_URL ? 'official' : 'custom'; // 标注来源
+    } catch (error) { // 主来源失败
+      errors.push(error instanceof Error ? error.message : String(error)); // 收集原因
+      if (options.fallbackUrl) { // 配置了备用地址才尝试
+        try { // 备用来源
+          const parsed = await fetchUsage(apiKey, options.signal, { url: options.fallbackUrl, orgId: options.orgId }); // 请求备用用量
+          usage = parsed; // 记录成功结果
+          source = 'fallback'; // 标注备用来源
+          origin = normalizeWebOrigin(options.fallbackUrl) ?? origin; // 成功来源用于拼接页面地址
+        } catch (fallbackError) { // 备用也失败
+          errors.push(fallbackError instanceof Error ? fallbackError.message : String(fallbackError)); // 追加原因
+        } // 结束备用异常
+      } // 结束备用分支
+    } // 结束主来源异常
+  } else { // 没有 Key
+    errors.push('还没有保存 OpenCode API Key，无法查询用量'); // 给出可行动提示
+  } // 结束 Key 判断
+  if (usage !== null) await writeUsage({ ...usage, source }, dir).catch(() => undefined); // 成功才覆盖缓存，写失败不影响返回
+  const current = usage ?? stored; // 本次或上次
+  return { // 汇总结果
+    windows: current?.windows ?? {}, // 三窗口额度
+    fetchedAt: current?.fetchedAt ?? null, // 额度的时间
+    stale: usage === null && current !== null, // 展示的是上次结果
+    source: usage === null ? (current?.source ?? null) : source, // 数据来源
+    origin, // 用于打开用量页的地址来源
+    pageUrl: usagePageUrl(origin), // Console 页面地址
+    errors, // 失败原因
+    hasKey: apiKey.length > 0, // Key 状态
+  }; // 结束汇总
+} // 结束额度检查

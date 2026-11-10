@@ -16,8 +16,8 @@
 - **拖动：** 拎起来放到任意位置；位置记在 `localStorage` 里，窗口尺寸变化时会重新
   夹取边界，保证她不会跑到屏幕外找不回来。
 - **首次加载：** 说一句欢迎气泡，每个浏览器只出现一次（v2 键）。
-- **右键：** 弹出小菜单，含 **模型与供应商配置** 和 **OpenCode 模型监控** 两个子项，
-  下面两节分别说明。
+- **右键：** 弹出小菜单，含 **模型与供应商配置** 和 **OpenCode 模型监控** 两个子项
+  （后者还能查 **剩余用量**），下面几节分别说明。
 - 尊重 `prefers-reduced-motion`：关闭帧动画、爱心与气泡弹跳，角色和交互仍然保留。
 
 ## 双击对话（交互版）
@@ -139,6 +139,11 @@
   而不是直接覆盖。
 - 点击外部、按 <kbd>Escape</kbd> 或选中菜单项后菜单收起；对话框可通过遮罩、
   <kbd>Escape</kbd> 或 **取消/完成** 关闭。
+- 菜单**先渲染再定位**：按点击位置落点后量真实尺寸，再收进视口（右/下溢出时反向收边），
+  所以菜单变长不用改常量；高度超过窗口时菜单自身滚动（`max-height: calc(100vh - 16px)`）。
+- 可展开的项（如 **OpenCode 模型监控**）用**独立二级菜单**浮在右侧，而不是把父菜单拉长：
+  右侧放不下自动翻到左侧，纵向超出自动收进视口；点两个面板之外或按 <kbd>Escape</kbd>
+  关闭（Escape 先收二级、再收一级）。
 
 ## 右键菜单：OpenCode Go 模型监控
 
@@ -146,6 +151,7 @@
 
 - **立即检查变动** —— 抓取一次新快照并与上一次对比。
 - **查看最近变动记录** —— 列出最近的检查记录。
+- **剩余用量** —— 查询 OpenCode Go 当前还剩多少额度（见下节）。
 
 数据来源：
 
@@ -191,7 +197,7 @@
 `unlimited` 视为最高值。所选套餐与方向保存在 `localStorage`
 （`dsh.deepseek-pet.opencode.sortField`、`dsh.deepseek-pet.opencode.sortDir`）。
 
-它排的是面板里展示的**月度配额上限**，不读取已消耗用量或账户余额。
+它排的是面板里展示的**月度配额上限**；账户实时用量由下面的 **剩余用量** 面板单独查询。
 
 文档里的 **Estimated requests / 5 hr** 数值作为参考一并展示。配额图会在配额数值下方
 显示一行紧凑的 `5h` 副值，跟随可见图例系列；明细页显示 Go、Go Plus、Go Teams 的精确
@@ -200,12 +206,54 @@
 图表上方的摘要标签显示模型数量、价格来自实时 API 还是文档、以及是否已配置 Key。
 没有变化的检查会显示 **没有变动**，而不是 0/0/0 的计数，同时下方仍完整展示当前状态。
 
-Host 半区通过 `ctx.connection.fetch.register` 注册了三个认证路由 ——
+Host 半区通过 `ctx.connection.fetch.register` 注册了四个认证路由 ——
 `/api/deepseek-pet/opencode/check`（POST）、
 `/api/deepseek-pet/opencode/history`（GET）、
-`/api/deepseek-pet/opencode/status`（GET）。所有网络与文件操作都在这里完成，
+`/api/deepseek-pet/opencode/status`（GET）、
+`/api/deepseek-pet/opencode/usage`（POST）。所有网络与文件操作都在这里完成，
 浏览器端因此不需要处理 CORS。Client 半区支持热更新；Host 半区的改动要等下一次插件重载
 或 DSH 重启才生效。
+
+路由注册必须是带 `/api/` 前缀的**绝对路径**（Host 用 `fetchRoutes.get(url.pathname)` 精确
+匹配，漏了前缀就会 404）。**桌面端页面跑在 `dsh-app://` 自定义协议下**，那里发文档相对
+地址 `api/...` 会被解析成 `dsh-app://local/web/api/...`（pathname 变成 `/web/api/...`），
+与注册路径对不上而 404；因此客户端先取页面的 http(s) 同源地址拼绝对地址，只有拿不到
+http(s) 来源时才退回文档相对写法。出错信息里会附上实际请求地址，便于区分是哪种情况。
+
+## 右键菜单：OpenCode Go 剩余用量
+
+右键宠物 → **OpenCode 模型监控** → **剩余用量**。面板打开时自动查一次，之后点
+**刷新用量** 再查。它展示三张额度卡片：
+
+- **5 小时** —— 滚动窗口（`rolling`）；
+- **本周** —— 每周窗口（`weekly`）；
+- **本月** —— 每月窗口（`monthly`）。
+
+每张卡片显示**剩余百分比**（进度条在剩余低于 30% 转橙、低于 10% 转红）、已用百分比和
+重置时间；窗口达到上限时标出 **已达上限**。这些窗口与服务端 `status: "rate-limited"`
+的语义一致。
+
+数据来源是 `GET https://opencode.ai/zen/go/v1/usage`（桌面版 OpenCode 用的同一个端点），
+返回的是 `{"usage":{"rolling|weekly|monthly":{"status","percent","resetsAt"}}}`。它接受
+Console 的 `oc_sk_` 密钥（`Authorization: Bearer ...`），不认 `sk-cp-` 形态的 Go 连接
+密钥——用后者会得到 401，面板会直接说明这一点。Key 与模型检查共用
+`OPENCODE_GO_API_KEY` 凭据，输入框留空即沿用已保存的 Key。
+
+每次成功查询都会把读数原子写入
+`$DSH_HOME/opencode-go-models-snapshots/usage.json`（权限 0600，**只存百分比与重置时间，
+不存 Key**）。查询失败时面板展示上一次的读数并提示 **这是上次保存的读数**，所以断网也
+不会白屏。**打开 OpenCode Console** 按钮跳转到控制台查看余额与发票。
+
+面板上的 **来源** 按钮展开三个可选字段，保存在 `localStorage`：
+
+| 字段 | 键 | 用途 |
+| --- | --- | --- |
+| usage URL | `dsh.deepseek-pet.opencode.usageUrl` | 覆盖默认用量端点，可指向能返回相同结构的代理/中转 |
+| fallback URL | `dsh.deepseek-pet.opencode.usageFallbackUrl` | 首选地址失败时再试一次（例如以防某项网络策略拦住了默认域名） |
+| org id | `dsh.deepseek-pet.opencode.orgId` | 团队工作区 id，作为 `x-opencode-org-id` 发送，用于取回本成员在看板上的额度 |
+
+地址必须是 `http(s)`；早先的 `console.opencode.ai` 域名会自动改写为
+`opencode.ai/console`。
 
 ## 与 Harness 界面的关系
 
@@ -222,9 +270,9 @@ Host 半区通过 `ctx.connection.fetch.register` 注册了三个认证路由 �
 |---|---|
 | `package.json` | bundle 清单：补丁、客户端入口、语言包与图标导出 |
 | `cordis.patch.yml` | 插入 `deepseek-pet` 的 Host 条目，以及桌宠对话人设预设 `preset-pet` |
-| `index.js` | Host 半区：OpenCode 监控认证路由与只写密钥存储 |
-| `monitor.js` | Host 监控核心：抓取模型、解析文档/配额、差异引擎、原子快照 |
-| `client.js` | 客户端模块：插槽注册、精灵动画、拖动/摸头、双击对话面板、右键中转站配置与 OpenCode 监控界面、文案 |
+| `index.js` | Host 半区：OpenCode 监控与剩余用量认证路由、只写密钥存储 |
+| `monitor.js` | Host 监控核心：抓取模型、解析文档/配额、差异引擎、原子快照、额度查询与缓存 |
+| `client.js` | 客户端模块：插槽注册、精灵动画、拖动/摸头、双击对话面板、右键中转站配置、OpenCode 监控与剩余用量界面、文案 |
 | `assets/pet-sheet.webp` | 6×3 打包精灵图集（待机 / 挥手 / 蹦跳） |
 | `locale/en.json`、`locale/zh.json` | 插件清单里显示的标题与描述（英文 / 中文） |
 | `icon.png` | 插件图标，取自同一套角色画稿 |
