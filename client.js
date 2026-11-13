@@ -28,6 +28,19 @@ window.__ModuleLoader__.load({
     const MENU_GAP = 8; // 菜单与窗口边缘的最小间距
 
     const OPENCODE_ROUTE = 'api/deepseek-pet/opencode'; // OpenCode 监控路由的文档相对地址（默认）
+    const TOKEN_USAGE_ROUTE = 'api/deepseek-pet/tokens/usage'; // Token 用量统计路由的文档相对地址
+    const hostRoute = (path) => { // 生成同源的 Host 路由地址，保证 pathname 与注册路径完全一致
+      const clean = String(path).replace(/^\/+/, ''); // 去掉可能的前导斜杠
+      const candidates = [globalThis.location?.origin, typeof document === 'object' && document !== null ? document.baseURI : null]; // 依次尝试页面来源与文档基准
+      for (const candidate of candidates) { // 逐个检查可用来源
+        if (typeof candidate !== 'string' || candidate.length === 0) continue; // 跳过空值
+        let origin = ''; // 解析出的来源
+        try { origin = new URL(candidate).origin; } catch (error) { continue; } // 解析失败换下一个
+        if (origin === 'null' || !/^https?:\/\//i.test(origin)) continue; // 自定义协议没有可直连的 /api
+        return `${origin}/${clean}`; // 同源绝对地址
+      } // 结束来源遍历
+      return path; // 非 http(s) 页面只能交给宿主按文档相对转运
+    }; // 结束地址生成
     const OPENCODE_UNSEEN_KEY = 'dsh.deepseek-pet.opencode.unseen'; // 未查看变动标记的本地键
     const OPENCODE_AUTO_KEY = 'dsh.deepseek-pet.opencode.autoHours'; // 自动检查间隔的本地键
     const OPENCODE_HIDDEN_KEY = 'dsh.deepseek-pet.opencode.hiddenSeries'; // 图例隐藏状态的本地键
@@ -106,6 +119,26 @@ window.__ModuleLoader__.load({
         ocCheck: 'Check for changes now', // 立即检查子操作
         ocHistory: 'View recent changes', // 查看历史子操作
         ocUsage: 'Remaining usage', // 剩余用量子操作
+        tkMenu: 'Token usage', // Token 用量菜单项
+        tkTitle: 'Token usage', // Token 用量面板标题
+        tkDesc: 'Aggregated from this machine’s DSH session logs. Cached reads count toward the total.', // 面板说明
+        tkPeriodDay: 'Today', // 本日周期
+        tkPeriodWeek: 'Week', // 本周周期
+        tkPeriodMonth: 'Month', // 本月周期
+        tkCalls: 'calls', // 调用次数单位
+        tkInput: 'Input', // 未缓存输入
+        tkCache: 'Cache read', // 缓存读取
+        tkOutput: 'Output', // 输出
+        tkModels: 'By model', // 模型用量分区标题
+        tkDaily: 'Daily usage', // 按天统计时的分区标题
+        tkHourly: 'Hourly usage', // 按小时统计时的分区标题
+        tkRefresh: 'Refresh', // 刷新按钮
+        tkLoading: 'Reading session logs…', // 统计中提示
+        tkNoData: 'No model calls in this period.', // 空周期提示
+        tkScanned: 'scanned', // 已扫描会话数
+        tkFailed: 'failed', // 读取失败会话数
+        tkTokenUnit: 'tokens', // token 单位
+        tkNoSessions: 'No session logs found on this machine.', // 找不到会话日志的提示
         ocUsageTitle: 'OpenCode Go remaining usage', // 用量面板标题
         ocUsageDesc: 'Rolling 5-hour, weekly and monthly allowance left on the current plan, read from the OpenCode usage endpoint.', // 用量面板说明
         ocUsageRefresh: 'Refresh usage', // 刷新按钮
@@ -259,6 +292,26 @@ window.__ModuleLoader__.load({
         ocCheck: '立即检查变动', // 立即检查子操作
         ocHistory: '查看最近变动记录', // 查看历史子操作
         ocUsage: '剩余用量', // 剩余用量子操作
+        tkMenu: 'Token 用量', // Token 用量菜单项
+        tkTitle: 'Token 用量统计', // Token 用量面板标题
+        tkDesc: '从本机 DSH 会话日志聚合而来，缓存命中也计入总量。', // 面板说明
+        tkPeriodDay: '本日', // 本日周期
+        tkPeriodWeek: '本周', // 本周周期
+        tkPeriodMonth: '本月', // 本月周期
+        tkCalls: '次调用', // 调用次数单位
+        tkInput: '未缓存输入', // 未缓存输入
+        tkCache: '缓存读取', // 缓存读取
+        tkOutput: '输出', // 输出
+        tkModels: '模型用量', // 模型用量分区标题
+        tkDaily: '每日用量', // 按天统计时的分区标题
+        tkHourly: '每小时用量', // 按小时统计时的分区标题
+        tkRefresh: '刷新', // 刷新按钮
+        tkLoading: '正在统计会话日志…', // 统计中提示
+        tkNoData: '这个周期还没有模型调用。', // 空周期提示
+        tkScanned: '个会话已扫描', // 已扫描会话数
+        tkFailed: '个会话读取失败', // 读取失败会话数
+        tkTokenUnit: 'tokens', // token 单位
+        tkNoSessions: '本机没有找到 DSH 会话日志。', // 找不到会话日志的提示
         ocUsageTitle: 'OpenCode Go 剩余用量', // 用量面板标题
         ocUsageDesc: '显示当前套餐在 5 小时滚动、每周、每月三个窗口里的剩余额度，数据来自 OpenCode 用量接口。', // 用量面板说明
         ocUsageRefresh: '刷新用量', // 刷新按钮
@@ -648,6 +701,35 @@ window.__ModuleLoader__.load({
 .dspet-sort .dspet-field-hint { margin: 0; white-space: nowrap; } /* 排序标签 */
 .dspet-sort .dspet-select { width: auto; height: 30px; padding: 0 8px; } /* 排序下拉宽度 */
 .dspet-sort-dir { min-width: 32px; height: 28px; padding: 0 8px; font-size: 11px; } /* 排序方向按钮 */
+.dspet-token-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; } /* 面板顶部行 */
+.dspet-token-tabs { display: flex; gap: 4px; padding: 2px; border: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, .12)); border-radius: 8px; background: var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, .05)); } /* 周期切换按钮组 */
+.dspet-token-tab { min-width: 44px; height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--dsw-alias-label-secondary, #6b6b76); font: inherit; font-size: 12px; cursor: pointer; } /* 周期切换按钮 */
+.dspet-token-tab:hover { color: var(--dsw-alias-label-primary, #1b1b1f); } /* 周期按钮悬停 */
+.dspet-token-tab[data-active="true"] { background: var(--dsw-alias-bg-base, #fff); color: var(--dsw-alias-label-primary, #1b1b1f); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, .08); } /* 选中的周期按钮 */
+.dspet-token-summary { padding: 10px 12px; border: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, .12)); border-radius: 8px; background: var(--dsw-alias-bg-base, #fff); } /* 汇总卡片 */
+.dspet-token-total { font-size: 22px; font-weight: 700; line-height: 1.2; } /* 总量大数字 */
+.dspet-token-total-unit { margin-left: 3px; font-size: 12px; font-weight: 400; color: var(--dsw-alias-label-secondary, #6b6b76); } /* 总量单位 */
+.dspet-token-split { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; } /* 输入/缓存/输出分项行 */
+.dspet-token-split-item { display: flex; align-items: baseline; gap: 5px; font-size: 11px; color: var(--dsw-alias-label-secondary, #6b6b76); } /* 单个分项 */
+.dspet-token-split-value { font-size: 12px; font-weight: 600; color: var(--dsw-alias-label-primary, #1b1b1f); } /* 分项数值 */
+.dspet-token-section { margin-top: 12px; } /* 分区间距 */
+.dspet-token-section-title { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--dsw-alias-label-primary, #1b1b1f); } /* 分区标题 */
+.dspet-token-models { display: flex; flex-direction: column; gap: 8px; } /* 模型列表 */
+.dspet-token-model { padding: 8px 10px; border: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, .12)); border-radius: 8px; background: var(--dsw-alias-bg-base, #fff); } /* 单个模型卡片 */
+.dspet-token-model-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; } /* 模型名与占比 */
+.dspet-token-model-name { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 模型名 */
+.dspet-token-model-provider { margin-left: 6px; font-size: 10px; font-weight: 400; color: var(--dsw-alias-label-secondary, #6b6b76); } /* 供应商标识 */
+.dspet-token-model-share { font-size: 12px; font-weight: 700; color: var(--dsw-alias-label-primary, #1b1b1f); } /* 占比数字 */
+.dspet-token-track { height: 6px; margin: 6px 0 4px; border-radius: 999px; background: var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, .08)); overflow: hidden; } /* 占比条槽 */
+.dspet-token-bar { height: 100%; border-radius: 999px; background: #4d6bfe; } /* 占比条 */
+.dspet-token-bar[data-level="low"] { background: #f2994a; } /* 占比低于 5% 转橙色 */
+.dspet-token-model-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--dsw-alias-label-secondary, #6b6b76); font-size: 10px; } /* 模型分项明细 */
+.dspet-token-daily { display: flex; align-items: flex-end; gap: 3px; height: 46px; padding-top: 4px; } /* 时间序列柱状图 */
+.dspet-token-daily-col { flex: 1 1 0; min-width: 4px; border-radius: 2px 2px 0 0; background: #4d6bfe; opacity: .75; } /* 单根柱子 */
+.dspet-token-daily-col[data-empty="true"] { background: var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, .08)); opacity: 1; } /* 没有用量的时段留空 */
+.dspet-token-axis { display: flex; gap: 3px; margin-top: 3px; } /* 柱状图下方的坐标标签行 */
+.dspet-token-axis-label { flex: 1 1 0; min-width: 4px; overflow: hidden; text-align: center; font-size: 9px; line-height: 12px; color: var(--dsw-alias-label-secondary, #6b6b76); } /* 单个坐标标签 */
+.dspet-token-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; color: var(--dsw-alias-label-secondary, #6b6b76); font-size: 10px; } /* 面板底部说明 */
 `;
 
     function clampPosition(right, bottom) {
@@ -1461,6 +1543,135 @@ window.__ModuleLoader__.load({
           ); // 结束遮罩
         } // 结束用量面板
 
+        function TokenUsage(props) { // Token 用量面板：本日/本周/本月三个周期，每个周期内按模型拆分
+          const t = props.t; // 翻译函数
+          const [period, setPeriod] = React.useState('week'); // 当前选中的周期
+          const [data, setData] = React.useState(null); // Host 聚合回来的统计结果
+          const [busy, setBusy] = React.useState(false); // 统计中
+          const [error, setError] = React.useState(''); // 错误文案
+          const started = React.useRef(false); // 防止重复自动加载
+
+          const load = async (force = false) => { // 拉一次统计
+            setBusy(true); setError(''); // 进入加载态
+            try { // 捕获失败
+              const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'; // 浏览器所在时区，周期边界按它算
+              const query = `timeZone=${encodeURIComponent(zone)}${force ? '&force=1' : ''}`; // 查询串
+              const response = await fetch(hostRoute(`${TOKEN_USAGE_ROUTE}?${query}`), { headers: { accept: 'application/json' } }); // 请求统计路由
+              const payload = await response.json().catch(() => ({ ok: false, error: `HTTP ${response.status}` })); // 解析响应
+              if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`); // 检查状态并带上原因
+              setData(payload); // 保存结果
+            } catch (cause) { // 统计失败
+              setError(cause instanceof Error ? cause.message : String(cause)); // 显示原因
+            } finally { // 结束
+              setBusy(false); // 恢复按钮
+            } // 结束异常
+          }; // 结束加载
+
+          React.useEffect(() => { // 打开时统计一次
+            if (started.current) return; // 只执行一次
+            started.current = true; // 标记已执行
+            load(); // 触发统计
+          }, []); // 只依赖首次挂载
+
+          React.useEffect(() => { // Escape 关闭
+            const onKeyDown = (event) => { if (event.key === 'Escape') props.onClose(); }; // 随时可关闭
+            window.addEventListener('keydown', onKeyDown); // 监听
+            return () => window.removeEventListener('keydown', onKeyDown); // 清理
+          }, [props.onClose]); // 依赖关闭回调
+
+          const maskClose = (event) => { if (event.target === event.currentTarget) props.onClose(); }; // 点遮罩关闭
+          const current = data?.periods?.[period] ?? null; // 当前周期的汇总
+          const totals = current?.totals ?? null; // 当前周期的合计
+          const number = (value) => (typeof value === 'number' ? value.toLocaleString('en-US') : '—'); // 千分位格式
+          const timeLabel = (value) => { const date = new Date(value); return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(); }; // 时间格式
+          const tabs = [['day', 'tkPeriodDay'], ['week', 'tkPeriodWeek'], ['month', 'tkPeriodMonth']]; // 三个周期按钮
+
+          const split = h('div', { className: 'dspet-token-split' }, // 输入/缓存/输出分项
+            h('span', { className: 'dspet-token-split-item' }, h('span', null, t('tkInput')), h('span', { className: 'dspet-token-split-value' }, number(totals?.input))), // 未缓存输入
+            h('span', { className: 'dspet-token-split-item' }, h('span', null, t('tkCache')), h('span', { className: 'dspet-token-split-value' }, number(totals?.cacheRead))), // 缓存读取
+            h('span', { className: 'dspet-token-split-item' }, h('span', null, t('tkOutput')), h('span', { className: 'dspet-token-split-value' }, number(totals?.output))), // 输出
+          ); // 结束分项
+
+          const summary = h('div', { className: 'dspet-token-summary' }, // 汇总卡片
+            h('div', { className: 'dspet-token-total' }, number(totals?.total ?? 0), h('span', { className: 'dspet-token-total-unit' }, t('tkTokenUnit'))), // 总量
+            h('div', { className: 'dspet-token-model-meta' }, h('span', null, `${number(totals?.calls ?? 0)} ${t('tkCalls')}`)), // 调用次数
+            split, // 分项
+          ); // 结束汇总卡片
+
+          const models = Array.isArray(current?.models) ? current.models : []; // 当前周期的模型列表
+          const modelList = h('div', { className: 'dspet-token-models' }, models.map((model) => h( // 模型卡片列表
+            'div', { key: `${model.provider}::${model.model}`, className: 'dspet-token-model' }, // 单个模型
+              h('div', { className: 'dspet-token-model-head' }, // 模型名与占比
+                h('span', { className: 'dspet-token-model-name', title: `${model.provider} / ${model.model}` }, model.model, h('span', { className: 'dspet-token-model-provider' }, model.provider)), // 模型名与供应商
+                h('span', { className: 'dspet-token-model-share' }, `${(model.share * 100).toFixed(1)}%`), // 占比
+              ), // 结束模型名行
+              h('div', { className: 'dspet-token-track' }, h('div', { className: 'dspet-token-bar', 'data-level': model.share < 0.05 ? 'low' : 'normal', style: { width: `${Math.max(model.share * 100, model.total > 0 ? 1 : 0)}%` } })), // 占比条
+              h('div', { className: 'dspet-token-model-meta' }, // 分项明细
+                h('span', null, `${number(model.calls)} ${t('tkCalls')}`), // 调用次数
+                h('span', null, `${t('tkInput')} ${number(model.input)}`), // 未缓存输入
+                h('span', null, `${t('tkCache')} ${number(model.cacheRead)}`), // 缓存读取
+                h('span', null, `${t('tkOutput')} ${number(model.output)}`), // 输出
+                h('span', null, `${number(model.total)} ${t('tkTokenUnit')}`), // 该模型合计
+              ), // 结束分项明细
+            ), // 结束模型卡片
+          )); // 结束模型列表
+
+          const series = current?.series ?? null; // 当前周期自带的时间序列（本日按小时，本周与本月按天）
+          const points = Array.isArray(series?.points) ? series.points : []; // 序列点位
+          const maxPoint = points.reduce((max, point) => Math.max(max, point.total), 0); // 序列最大值，用来定柱高
+          // 坐标标签按点位数量抽稀，避免柱子太密时文字挤在一起
+          const labelStep = points.length <= 8 ? 1 : points.length <= 16 ? 2 : 5; // 每隔几个点显示一个标签
+          const weekdayLabel = (key) => { // 把 YYYY-MM-DD 转成本地化的星期几
+            const parsed = new Date(`${key}T00:00:00`); // 按本地时间解析该日期
+            if (Number.isNaN(parsed.getTime())) return ''; // 解析失败就没有标签
+            return parsed.toLocaleDateString(undefined, { weekday: 'narrow' }); // 窄版星期几
+          }; // 结束星期标签
+          const pointLabel = (point, index) => { // 决定一个点位显示什么标签
+            if (series?.unit === 'hour') return String(point.key); // 本日按小时：直接显示小时数
+            if (period === 'week') return weekdayLabel(point.key); // 本周按天：显示星期几
+            const parsed = new Date(`${point.key}T00:00:00`); // 按本地时间解析该日期
+            return Number.isNaN(parsed.getTime()) ? '' : String(parsed.getDate()); // 本月按天：显示几号
+          }; // 结束标签计算
+          const trend = h('div', null, // 趋势区
+            h('div', { className: 'dspet-token-daily' }, points.map((point) => h( // 柱状趋势
+              'div', { key: point.key, className: 'dspet-token-daily-col', 'data-empty': point.total === 0 ? 'true' : 'false', title: `${point.label} · ${number(point.total)} ${t('tkTokenUnit')}`, style: { height: maxPoint > 0 ? `${Math.max((point.total / maxPoint) * 100, point.total > 0 ? 8 : 3)}%` : '3%' } }, // 单根柱子
+            ))), // 结束柱状图
+            h('div', { className: 'dspet-token-axis' }, points.map((point, index) => h( // 坐标标签行
+              'span', { key: point.key, className: 'dspet-token-axis-label' }, (index % labelStep === 0 || index === points.length - 1) ? pointLabel(point, index) : ''), // 单个标签
+            )), // 结束坐标标签行
+          ); // 结束趋势区
+
+          const foot = h('div', { className: 'dspet-token-foot' }, // 底部说明
+            h('span', null, `${number(data?.sessions?.scanned ?? 0)} ${t('tkScanned')}${data?.sessions?.failed > 0 ? ` · ${number(data.sessions.failed)} ${t('tkFailed')}` : ''}`), // 会话读取情况
+            h('span', null, data?.fetchedAt ? timeLabel(data.fetchedAt) : ''), // 统计时间
+          ); // 结束底部说明
+
+          return h('div', { className: 'dspet-modal', onPointerDown: maskClose }, // 遮罩
+            h('div', { className: 'dspet-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'dspet-token-title' }, // 面板
+              h('div', { className: 'dspet-token-head' }, // 标题与周期切换
+                h('h2', { id: 'dspet-token-title', className: 'dspet-dialog-title' }, t('tkTitle')), // 标题
+                h('div', { className: 'dspet-token-tabs', role: 'tablist' }, tabs.map(([key, labelKey]) => h( // 周期按钮组
+                  'button', { key, type: 'button', role: 'tab', className: 'dspet-token-tab', 'aria-selected': period === key, 'data-active': period === key ? 'true' : 'false', onClick: () => setPeriod(key) }, t(labelKey)), // 单个周期按钮
+                )), // 结束周期按钮组
+              ), // 结束标题行
+              h('p', { className: 'dspet-dialog-desc' }, t('tkDesc')), // 说明
+              h('div', { className: 'dspet-monitor-actions' }, // 操作行
+                h('button', { type: 'button', className: 'dspet-btn dspet-btn-primary', onClick: () => load(true), disabled: busy }, busy ? t('tkLoading') : t('tkRefresh')), // 刷新
+              ), // 结束操作行
+              error.length > 0 ? h('p', { className: 'dspet-error' }, error) : null, // 错误
+              data === null && busy ? h('p', { className: 'dspet-field-hint' }, t('tkLoading')) : null, // 首次加载提示
+              data !== null && (totals?.calls ?? 0) === 0 ? h('p', { className: 'dspet-field-hint' }, data?.sessions?.scanned === 0 ? t('tkNoSessions') : t('tkNoData')) : null, // 空周期提示
+              data !== null && (totals?.calls ?? 0) > 0 ? h('div', null, // 有数据时展示全部内容
+                summary, // 汇总
+                h('div', { className: 'dspet-token-section' }, h('p', { className: 'dspet-token-section-title' }, t('tkModels')), modelList), // 模型用量
+                points.length > 1 ? h('div', { className: 'dspet-token-section' }, h('p', { className: 'dspet-token-section-title' }, series?.unit === 'hour' ? t('tkHourly') : t('tkDaily')), trend) : null, // 与当前周期匹配的趋势
+                foot, // 底部说明
+              ) : null, // 结束内容区
+              h('div', { className: 'dspet-dialog-footer' }, h('button', { type: 'button', className: 'dspet-btn', onClick: props.onClose }, t('close'))), // 关闭
+            ), // 结束面板
+          ); // 结束遮罩
+        } // 结束 Token 用量面板
+
         function Pet(props) {
           const [, setLocaleRevision] = React.useState(0);
           const [position, setPosition] = React.useState(loadPosition);
@@ -1484,6 +1695,7 @@ window.__ModuleLoader__.load({
           const [monitorMenuOpen, setMonitorMenuOpen] = React.useState(false); // 监控二级菜单是否展开
           const [submenuPos, setSubmenuPos] = React.useState({ x: 0, y: 0, ready: false }); // 二级菜单的坐标，独立测量
           const [usageOpen, setUsageOpen] = React.useState(false); // 剩余用量面板是否打开
+          const [tokenOpen, setTokenOpen] = React.useState(false); // Token 用量面板是否打开
           const [unseen, setUnseen] = React.useState(() => { try { return window.localStorage.getItem(OPENCODE_UNSEEN_KEY) === '1'; } catch (error) { return false; } }); // 未查看变动标记
           const [autoHours, setAutoHours] = React.useState(() => { try { const value = Number(window.localStorage.getItem(OPENCODE_AUTO_KEY)); return value === 6 || value === 24 ? value : 0; } catch (error) { return 0; } }); // 自动检查间隔
           const [chatOpen, setChatOpen] = React.useState(false); // 对话面板是否打开
@@ -1708,6 +1920,11 @@ window.__ModuleLoader__.load({
             setMonitorMenuOpen(false); // 收起子菜单
             setUsageOpen(true); // 打开面板
           }; // 结束打开用量
+          const openTokens = () => { // 打开 Token 用量面板
+            setMenu(null); // 关闭右键菜单
+            setMonitorMenuOpen(false); // 收起子菜单
+            setTokenOpen(true); // 打开面板
+          }; // 结束打开 Token 用量
           const onAutoHours = (value) => { // 保存自动检查频率
             setAutoHours(value); // 更新状态
             try { window.localStorage.setItem(OPENCODE_AUTO_KEY, String(value)); } catch (error) { /* 忽略存储失败 */ } // 持久化
@@ -2062,6 +2279,14 @@ window.__ModuleLoader__.load({
                   h('path', { d: 'M9 6l6 6-6 6' }), // 箭头路径
                 ), // 结束箭头
               ), // 结束监控一级项
+              h( // Token 用量一级项
+                'button', // 可聚焦按钮
+                { type: 'button', className: 'dspet-menu-item', role: 'menuitem', onClick: openTokens }, // 点击打开统计面板
+                h('svg', { className: 'dspet-menu-icon', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', 'aria-hidden': true }, // 计量图标
+                  h('path', { d: 'M3 3v18h18M7 15l4-5 3 3 5-7' }), // 折线与坐标轴路径
+                ), // 结束图标
+                h('span', null, t('tkMenu')), // 本地化菜单文案
+              ), // 结束 Token 用量一级项
             ), // 结束一级菜单
             monitorMenuOpen ? h( // 二级菜单：浮在一级菜单旁边，不撑高父菜单
               'div', // 二级菜单容器
@@ -2074,6 +2299,7 @@ window.__ModuleLoader__.load({
             monitorOpen ? h(OpenCodeMonitor, { t, view: monitorView, autoCheck: monitorAutoCheck, autoHours, onAutoHours, runCheck: runOpenCodeCheck, onClose: () => setMonitorOpen(false), onHistoryViewed: clearUnseen }) : null, // OpenCode 监控面板
             chatOpen ? h(ChatThread, { t, anchor: chatAnchor, messages: chatMessages, onSend: sendChat, onClose: closeChat, onClear: clearChat, loadModels: loadChatModels }) : null, // 双击弹出的对话面板，模型目录与清空由宠物侧处理
             usageOpen ? h(OpenCodeUsage, { t, runUsage: runOpenCodeUsage, onClose: () => setUsageOpen(false) }) : null, // 剩余用量面板
+            tokenOpen ? h(TokenUsage, { t, onClose: () => setTokenOpen(false) }) : null, // Token 用量面板
           );
         }
 

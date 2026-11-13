@@ -8,6 +8,7 @@
  * writable local directory.
  */
 import { performCheck, performUsageCheck, readHistory, readStatus, normalizeWebOrigin, KEY_REF } from './monitor.js'; // 监控实现、额度查询与凭据引用
+import { collectTokenUsage } from './token-usage.js'; // 会话日志里的 Token 用量聚合
 
 export const inject = ['connection', 'credentials']; // 认证路由与只读凭据服务
 
@@ -15,6 +16,7 @@ const CHECK_PATH = '/api/deepseek-pet/opencode/check'; // 检查路由绝对路�
 const HISTORY_PATH = '/api/deepseek-pet/opencode/history'; // 历史路由绝对路径
 const STATUS_PATH = '/api/deepseek-pet/opencode/status'; // 当前状态路由绝对路径
 const USAGE_PATH = '/api/deepseek-pet/opencode/usage'; // OpenCode Go 剩余额度路由绝对路径
+const TOKEN_USAGE_PATH = '/api/deepseek-pet/tokens/usage'; // Token 用量统计路由绝对路径
 const MAX_KEY_LENGTH = 4096; // 限制请求体里的 Key 长度
 
 function jsonResponse(body, status = 200) { // 统一的 JSON 响应
@@ -30,6 +32,8 @@ function errorResponse(error, status) { // 统一的错误响应
 
 export function apply(ctx) { // 注册监控路由
   const credentials = ctx.credentials; // 凭据服务
+  // 会话查询服务不写进 inject：万一宿主没挂载这个服务，也只是用量面板不可用，桌宠本身照常工作。
+  const readSessionQuery = () => (typeof ctx.get === 'function' ? ctx.get('sessionQuery') : ctx.sessionQuery); // 延迟取会话查询服务
   const routes = ctx.connection.fetch; // Host 认证路由注册表
   let queue = Promise.resolve(); // 串行化检查，避免并发写快照
   const enqueue = (task) => { // 把任务接入串行队列
@@ -135,4 +139,24 @@ export function apply(ctx) { // 注册监控路由
       } // 结束异常
     }, // 结束额度处理器
   }); // 结束剩余额度路由
+
+  routes.register({ // Token 用量路由
+    path: TOKEN_USAGE_PATH, // 绝对注册路径
+    methods: ['GET'], // 只读
+    requestBody: 'buffered', // 与注册协议保持一致
+    fetch: async (request) => { // 处理一次用量统计
+      try { // 统一捕获失败
+        const sessionQuery = readSessionQuery(); // 取会话查询服务
+        if (sessionQuery === undefined) return errorResponse(new Error('当前 Harness 没有启用会话查询服务'), 501); // 没有数据源就直说
+        const url = new URL(request.url); // 解析查询参数
+        const rawTimeZone = url.searchParams.get('timeZone') ?? ''; // 客户端所在时区
+        const timeZone = /^[A-Za-z0-9_+-]+(?:\/[A-Za-z0-9_+-]+){0,2}$/.test(rawTimeZone) ? rawTimeZone : 'Asia/Shanghai'; // 只接受形状安全的时区名
+        const force = url.searchParams.get('force') === '1'; // 是否强制重算，跳过缓存
+        const result = await collectTokenUsage(sessionQuery, { timeZone, force }); // 聚合会话日志里的用量
+        return jsonResponse({ ok: true, ...result }); // 返回统计结果
+      } catch (error) { // 统计失败
+        return errorResponse(error, 500); // 以 500 返回原因
+      } // 结束异常
+    }, // 结束用量处理器
+  }); // 结束 Token 用量路由
 } // 结束 apply
