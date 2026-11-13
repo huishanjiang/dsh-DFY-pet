@@ -1,7 +1,7 @@
 {
   "name": "dsh-dfy-pet",
   "version": "2.9.0",
-  "description": "A chibi DeepSeek whale-girl desktop pet with right-click AI relay provider configuration, an OpenCode Go model/pricing/quota monitor, and a remaining-usage panel for the 5-hour, weekly and monthly Go allowance.",
+  "description": "DeepSeek 大肥鱼娘 Q 版桌宠：会呼吸、挥手、蹦跳，点一下会说话，还能拖着走。右键可配置 AI 中转站、查看 OpenCode Go 模型与配额、5 小时/周/月剩余额度，以及本日、本周、本月的 Token 用量与模型分布统计。社区二创形象。",
   "license": "Apache-2.0",
   "keywords": [
     "deepseek-harness",
