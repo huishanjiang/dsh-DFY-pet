@@ -84,9 +84,17 @@ export function normalizeModelName(value) { // 生成用于匹配的名称键
     .trim(); // 去掉首尾空格
 } // 结束名称归一化
 
+export function apiQuotas(item) { // 读取 API 自带的 Go 三档月度额度（官方 models 端点的 go.monthly_usage）
+  const usage = item?.go?.monthly_usage; // 三档额度都挂在 go.monthly_usage 下
+  if (usage === null || typeof usage !== 'object') return null; // 只有 free 模型会返回 null，当作无额度数据
+  // 端点用 go-plus / go-teams 连字符键，内部统一成 goPlus / goTeams 避免与文档解析键名分叉
+  return { go: numberOrNull(usage.go), goPlus: numberOrNull(usage['go-plus']), goTeams: numberOrNull(usage['go-teams']) }; // 返回三档额度
+} // 结束 API 额度读取
+
 function normalizeApiModel(item) { // 把 API 条目转成内部模型
   const id = typeof item?.id === 'string' ? item.id.trim() : ''; // 读取模型 id
   const name = typeof item?.name === 'string' && item.name.trim().length > 0 ? item.name.trim() : id; // 读取显示名
+  const apiQuota = apiQuotas(item); // API 直接给出的额度，作为文档缺失时的权威来源
   const cost = item?.cost?.text; // 读取文本计费
   const input = numberOrNull(cost?.input?.price); // 输入单价
   const output = numberOrNull(cost?.output?.price); // 输出单价
@@ -94,7 +102,7 @@ function normalizeApiModel(item) { // 把 API 条目转成内部模型
   const cacheWrite = numberOrNull(cost?.input?.cache?.write); // 缓存写单价
   const context = numberOrNull(item?.limit?.context); // 上下文窗口
   const maxOutput = numberOrNull(item?.limit?.output); // 最大输出
-  return { id, name, input, output, cacheRead, cacheWrite, context, maxOutput, costDigest: stableStringify(item?.cost ?? null), pricingSource: input !== null || output !== null ? 'api' : null }; // 返回内部记录
+  return { id, name, input, output, cacheRead, cacheWrite, context, maxOutput, apiQuota, costDigest: stableStringify(item?.cost ?? null), pricingSource: input !== null || output !== null ? 'api' : null }; // 返回内部记录，附带 API 额度
 } // 结束 API 模型转换
 
 export async function fetchModels(apiKey, signal) { // 读取实时模型列表
@@ -225,12 +233,16 @@ export function mergeModelData(apiModels, docs, previousModels = []) { // 合并
     const quotas = {}; // 三档配额
     const requests5h = {}; // 三档 5h 请求
     let matchedDocs = false; // 是否命中文档
+    let matchedApiQuota = false; // 是否命中 API 自带额度
     let matchedRequests = false; // 是否命中请求表
     for (const plan of plansForMerge) { // 每个套餐
       const targetName = normalizeModelName(row?.name ?? model.name); // 文档中的目标名称
       const planRow = plan.rows.find((candidate) => normalizeModelName(candidate.name) === targetName); // 套餐内匹配
       if (planRow?.monthlyLimit !== undefined) matchedDocs = true; // 命中文档
-      quotas[plan.key] = planRow?.monthlyLimit ?? previous?.quotas?.[plan.key] ?? null; // 文档优先，其次上次
+      const apiQuota = model.apiQuota?.[plan.key]; // 本套餐下 API 给出的额度
+      if (typeof apiQuota === 'number') matchedApiQuota = true; // 记录命中
+      // API 额度优先：文档页已不再提供月度额度表，端点 go.monthly_usage 才是 Go 订阅的真实口径
+      quotas[plan.key] = (typeof apiQuota === 'number' ? apiQuota : null) ?? planRow?.monthlyLimit ?? previous?.quotas?.[plan.key] ?? null; // API 优先，其次文档，最后上次
       const requestRow = (plan.requests ?? []).find((candidate) => { const key = normalizeModelName(candidate.name); return key === normalizedName || key === normalizedId; }); // 套餐内请求匹配
       if (requestRow?.fiveHour !== undefined && requestRow.fiveHour !== null) matchedRequests = true; // 命中请求表
       requests5h[plan.key] = requestRow?.fiveHour ?? previous?.requests5h?.[plan.key] ?? null; // 请求优先，其次上次
@@ -244,7 +256,7 @@ export function mergeModelData(apiModels, docs, previousModels = []) { // 合并
       pricingSource: model.pricingSource ?? (row ? 'docs' : null), // 价格来源
       quotas, // 三档配额
       requests5h, // 三档 5h 请求
-      quotaSource: matchedDocs ? 'docs' : previous ? 'previous' : null, // 配额来源
+      quotaSource: matchedApiQuota ? 'api' : matchedDocs ? 'docs' : previous ? 'previous' : null, // 配额来源：API 优先
       requestSource: matchedRequests ? 'docs' : previous ? 'previous' : null, // 请求来源
     }; // 结束合并
   }); // 结束模型映射
@@ -389,7 +401,7 @@ export async function performCheck(options = {}) { // 执行一次检查
   } // 结束文档容错
   const merged = mergeModelData(apiModels, docs, previous?.models ?? []); // 合并数据
   if (docs && docs.plans.length > 0 && merged.every((model) => Object.values(model.quotas ?? {}).every((value) => value === null))) { // 配额全部未命中
-    warnings.push('文档已抓取，但没有匹配到任何模型的配额'); // 匹配失败提示
+    warnings.push('文档与模型端点都没有匹配到任何模型的配额'); // 匹配失败提示（额度现在主要来自模型端点）
   } // 结束匹配检查
   if (docs && docs.plans.length > 0 && merged.every((model) => Object.values(model.requests5h ?? {}).every((value) => value === null))) { // 请求全部未命中
     warnings.push('文档已抓取，但没有匹配到任何模型的 5h 请求估算'); // 请求匹配失败提示
