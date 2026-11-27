@@ -781,7 +781,7 @@ window.__ModuleLoader__.load({
 .dspet-sort { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; } /* 排序行 */
 .dspet-sort .dspet-field-hint { margin: 0; white-space: nowrap; } /* 排序标签 */
 .dspet-sort .dspet-select { width: auto; height: 30px; padding: 0 8px; } /* 排序下拉宽度 */
-.dspet-sort-dir { min-width: 32px; height: 28px; padding: 0 8px; font-size: 11px; } /* 排序方向按钮 */
+.dspet-sort-dir { min-width: 32px; height: 28px; padding: 0 8px; font-size: 11px; } /* 排序方向按钮：只调尺寸，背景与文字沿用 .dspet-btn */
 .dspet-token-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; } /* 面板顶部行 */
 .dspet-token-tabs { display: flex; gap: 4px; padding: 2px; border: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, .12)); border-radius: 8px; background: var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, .05)); } /* 周期切换按钮组 */
 .dspet-token-tab { min-width: 44px; height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--dsw-alias-label-secondary, #6b6b76); font: inherit; font-size: 12px; cursor: pointer; } /* 周期切换按钮 */
@@ -836,9 +836,10 @@ window.__ModuleLoader__.load({
 .dspet-an-speed { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 6px 0; font-size: 12px; } /* 速度与换算价 */
 .dspet-an-speed strong { font-size: 14px; } /* 速度数字 */
 .dspet-root button, .dspet-root select, .dspet-root input, .dspet-root textarea { font: inherit; } /* 让控件继承界面字体，避免各控件字号不齐 */
-.dspet-root button, .dspet-modal button { border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer; } /* 兜底：所有按钮先拿到插件的基础字体与圆角，不再露出浏览器默认样式 */
-.dspet-root button:not(.dspet-btn):not(.dspet-btn-primary), .dspet-modal button:not(.dspet-btn):not(.dspet-btn-primary) { -webkit-appearance: none; appearance: none; background: none; border: 0; color: var(--dsw-alias-label-primary, #1b1b1f); } /* 兜底：无背景按钮直接用透明底，避免深色主题里露出浅色默认底变成白字白底 */
-.dspet-root button:disabled { opacity: .55; cursor: default; } /* 禁用态统一压低不透明度，不再依赖各按钮自己声明 */
+.dspet-root button, .dspet-modal button { border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer; color: inherit; } /* 兜底：所有按钮先拿到插件的基础字体、圆角与光标，不再露出浏览器默认样式 */
+.dspet-root button:not(.dspet-btn-primary), .dspet-modal button:not(.dspet-btn-primary) { -webkit-appearance: none; appearance: none; } /* 兜底：非主按钮统一去掉浏览器默认外观，避免深色主题下露出浅色默认底 */
+.dspet-root button:not(.dspet-btn-primary):not(.dspet-menu-item):not(.dspet-cascade-item):not(.dspet-tab):not(.dspet-token-tab):not(.dspet-legend-item):not(.dspet-chat-close):not(.dspet-chat-clear):not(.dspet-chat-model-btn):not(.dspet-picker-search-clear), .dspet-modal button:not(.dspet-btn-primary):not(.dspet-menu-item):not(.dspet-cascade-item):not(.dspet-tab):not(.dspet-token-tab):not(.dspet-legend-item):not(.dspet-chat-close):not(.dspet-chat-clear):not(.dspet-chat-model-btn):not(.dspet-picker-search-clear) { background-color: var(--dsw-alias-bg-layer-1, #ffffff); border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, .18)); color: var(--dsw-alias-label-primary, #1b1b1f); } /* 兜底：剩下这些按钮统一成主题底 + 主题文字，防再出现白底白字 */
+.dspet-root button:disabled, .dspet-modal button:disabled { opacity: .55; cursor: default; } /* 禁用态统一压低不透明度，不再依赖各按钮自己声明 */
 `;
 
     function clampPosition(right, bottom) {
@@ -1124,7 +1125,7 @@ window.__ModuleLoader__.load({
         ), // 结束消息区
         h('div', { className: 'dspet-chat-form' }, // 输入行
           h('textarea', { ref: inputRef, className: 'dspet-chat-input', rows: 1, value: draft, placeholder: t('chatPlaceholder'), 'aria-label': t('chatPlaceholder'), onChange: (event) => setDraft(event.target.value), onKeyDown: onInputKeyDown }), // 多行输入框
-          h('button', { type: 'button', className: 'dspet-btn dspet-btn-primary dspet-chat-send', onClick: submit, disabled: sending }, t('chatSend')), // 发送按钮
+          h('button', { type: 'button', className: 'dspet-btn dspet-btn-primary', onClick: submit, disabled: sending }, t('chatSend')), // 发送按钮：样式全部来自 .dspet-btn-primary，不再挂没有定义的类名
         ), // 结束输入行
         ), // 结束对话面板
         pickerOpen ? h(ModelPickerDialog, { key: 'picker', shellRef: pickerElRef, t, groups: catalog.groups, selectedKey: modelKey, onPick: (key) => { persistModel(key); setPickerOpen(false); }, onClose: () => setPickerOpen(false) }) : null, // 模型选择弹窗，与面板同级，不受面板 overflow 裁剪
