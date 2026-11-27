@@ -5,3 +5,5 @@ node_modules/
 # 系统与编辑器杂物
 .DS_Store
 *.log
+# 编辑器本地配置（settings.json 里已有这条，这里补上整个目录）
+.vscode/
