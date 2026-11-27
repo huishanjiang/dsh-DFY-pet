@@ -833,6 +833,9 @@ window.__ModuleLoader__.load({
 .dspet-an-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--dsw-alias-label-secondary, #6b6b76); } /* 窗口细节 */
 .dspet-an-speed { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 6px 0; font-size: 12px; } /* 速度与换算价 */
 .dspet-an-speed strong { font-size: 14px; } /* 速度数字 */
+.dspet-root button, .dspet-root select, .dspet-root input, .dspet-root textarea { font: inherit; } /* 让控件继承界面字体，避免各控件字号不齐 */
+.dspet-root button:not(.dspet-btn):not(.dspet-btn-primary) { -webkit-appearance: none; appearance: none; background: none; color: var(--dsw-alias-label-primary, #1b1b1f); border: 0; } /* 兜底：无背景按钮在深色主题里会露出浏览器浅色默认底，文字只继承浅色而变白字白底 */
+.dspet-root button:disabled { opacity: .55; cursor: default; } /* 禁用态统一压低不透明度，不再依赖各按钮自己声明 */
 `;
 
     function clampPosition(right, bottom) {
