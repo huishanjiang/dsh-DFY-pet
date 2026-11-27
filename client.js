@@ -496,6 +496,8 @@ window.__ModuleLoader__.load({
   pointer-events: none;
   font-family: inherit;
   line-height: normal;
+  --dspet-brand: #4d6bfe; /* 插件自己的主色，主按钮不再依赖主题 token */
+  --dspet-brand-label: #ffffff; /* 主按钮上的文字色，与主色对比度足够 */
 }
 .dspet-handle {
   position: relative;
@@ -646,7 +648,7 @@ window.__ModuleLoader__.load({
 .dspet-success { margin: 2px 0 8px; color: var(--dsw-alias-state-success-primary, #1d7a3a); font-size: 12px; line-height: 1.5; } /* 成功文本 */
 .dspet-dialog-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; } /* 对话框按钮行 */
 .dspet-btn { height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, .18)); background: var(--dsw-alias-bg-layer-1, #ffffff); color: var(--dsw-alias-label-primary, #1b1b1f); font: inherit; font-size: 13px; cursor: pointer; } /* 普通按钮 */
-.dspet-btn-primary { border-color: transparent; background: var(--dsw-alias-brand-primary, #4d6bfe); color: #ffffff; } /* 主按钮 */
+.dspet-btn-primary { border: 1px solid transparent; background: var(--dspet-brand); color: var(--dspet-brand-label); font: inherit; font-size: 13px; cursor: pointer; } /* 主按钮：自己带背景与文字色，避免落到浏览器默认样式上变成白底白字 */
 .dspet-btn:disabled { opacity: .55; cursor: default; } /* 禁用按钮 */
 .dspet-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } /* 双列表单行 */
 @media (max-width: 520px) { .dspet-grid2 { grid-template-columns: 1fr; } } /* 窄屏改为单列 */
@@ -834,7 +836,8 @@ window.__ModuleLoader__.load({
 .dspet-an-speed { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 6px 0; font-size: 12px; } /* 速度与换算价 */
 .dspet-an-speed strong { font-size: 14px; } /* 速度数字 */
 .dspet-root button, .dspet-root select, .dspet-root input, .dspet-root textarea { font: inherit; } /* 让控件继承界面字体，避免各控件字号不齐 */
-.dspet-root button:not(.dspet-btn):not(.dspet-btn-primary) { -webkit-appearance: none; appearance: none; background: none; color: var(--dsw-alias-label-primary, #1b1b1f); border: 0; } /* 兜底：无背景按钮在深色主题里会露出浏览器浅色默认底，文字只继承浅色而变白字白底 */
+.dspet-root button, .dspet-modal button { border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer; } /* 兜底：所有按钮先拿到插件的基础字体与圆角，不再露出浏览器默认样式 */
+.dspet-root button:not(.dspet-btn):not(.dspet-btn-primary), .dspet-modal button:not(.dspet-btn):not(.dspet-btn-primary) { -webkit-appearance: none; appearance: none; background: none; border: 0; color: var(--dsw-alias-label-primary, #1b1b1f); } /* 兜底：无背景按钮直接用透明底，避免深色主题里露出浅色默认底变成白字白底 */
 .dspet-root button:disabled { opacity: .55; cursor: default; } /* 禁用态统一压低不透明度，不再依赖各按钮自己声明 */
 `;
 
