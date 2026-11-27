@@ -1669,7 +1669,6 @@ window.__ModuleLoader__.load({
               const response = await fetch(hostRoute(`${TOKEN_USAGE_ROUTE}?${query}`), { headers: { accept: 'application/json' } }); // 请求统计路由
               const payload = await response.json().catch(() => ({ ok: false, error: `HTTP ${response.status}` })); // 解析响应
               if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`); // 检查状态并带上原因
-              if (seq !== runSeq.current) return; // 已有更新的一轮在跑，丢弃这次结果
               setData(payload); // 保存结果
             } catch (cause) { // 统计失败
               setError(cause instanceof Error ? cause.message : String(cause)); // 显示原因
