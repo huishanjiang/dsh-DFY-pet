@@ -13,10 +13,10 @@
  */
 
 /** 三个统计周期的键，顺序即界面上的展示顺序。 */
-export const TOKEN_PERIODS = ['day', 'week', 'month'];
+export const TOKEN_PERIODS = ['day', 'week', 'month']; // 三个周期的键，顺序即展示顺序
 
 /** 聚合结果的默认缓存时长：会话日志重放不便宜，短时间内重复请求直接复用缓存。 */
-const DEFAULT_TTL_MS = 60_000;
+const DEFAULT_TTL_MS = 60_000; // 一分钟内重复请求直接复用缓存，避免反复重放日志
 
 /** 超过这个天数的会话不再读取，避免历史会话把每次刷新拖慢。 */
 const MAX_SESSION_AGE_DAYS = 120;
@@ -30,7 +30,7 @@ const PERIOD_SPAN_DAYS = { day: 0, week: 6, month: 29 };
  * @param {string} timeZone - IANA 时区名，例如 Asia/Shanghai。
  * @returns {{ y: number, m: number, d: number }} - 该时区下的年月日。
  */
-export function localDate(ms, timeZone) {
+export function localDate(ms, timeZone) { // 毫秒时间戳转指定时区的年月日
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(ms)); // 取本地年月日各段
   const lookup = {}; // 段类型到取值的映射
   for (const part of parts) lookup[part.type] = part.value; // 逐段收集
@@ -43,7 +43,7 @@ export function localDate(ms, timeZone) {
  * @param {string} timeZone - IANA 时区名。
  * @returns {number} - 0 到 23 的小时数。
  */
-export function localHour(ms, timeZone) {
+export function localHour(ms, timeZone) { // 毫秒时间戳转指定时区的小时数
   const parts = new Intl.DateTimeFormat('en-US', { timeZone, hour12: false, hour: '2-digit' }).formatToParts(new Date(ms)); // 取本地小时
   const lookup = {}; // 段类型到取值的映射
   for (const part of parts) lookup[part.type] = part.value; // 逐段收集
@@ -70,7 +70,7 @@ function zoneOffset(ms, timeZone) {
  * @param {string} timeZone - IANA 时区名。
  * @returns {number} - 该日零点的毫秒时间戳。
  */
-export function startOfLocalDate(date, timeZone) {
+export function startOfLocalDate(date, timeZone) { // 求指定时区某个日历日期的零点时刻
   const base = Date.UTC(date.y, date.m - 1, date.d); // 先把日历日期当成 UTC 零点，得到一个初值
   let guess = base; // 当前猜测的零点时刻
   for (let round = 0; round < 3; round += 1) { // 最多校正三轮，跨夏令时也能收敛
@@ -88,7 +88,7 @@ export function startOfLocalDate(date, timeZone) {
  * @param {number} days - 要加的天数，可为负。
  * @returns {{ y: number, m: number, d: number }} - 结果日期。
  */
-export function addCalendarDays(date, days) {
+export function addCalendarDays(date, days) { // 在日历日期上加减天数，避开夏令时
   const shifted = new Date(Date.UTC(date.y, date.m - 1, date.d) + days * 86_400_000); // 按 UTC 做日历加减
   return { y: shifted.getUTCFullYear(), m: shifted.getUTCMonth() + 1, d: shifted.getUTCDate() }; // 转回年月日
 }
@@ -99,7 +99,7 @@ export function addCalendarDays(date, days) {
  * @param {string} timeZone - IANA 时区名。
  * @returns {Record<string, { start: number, startDate: { y: number, m: number, d: number } }>} - 各周期的起点。
  */
-export function periodBounds(now, timeZone) {
+export function periodBounds(now, timeZone) { // 计算本日/本周/本月的起点
   const today = localDate(now, timeZone); // 今天的日历日期
   const todayStart = startOfLocalDate(today, timeZone); // 今天零点的时刻
   // 星期几必须按「本地日历日期」算：本地零点的那个瞬间在东八区落在前一个 UTC 日，
@@ -218,7 +218,7 @@ function summarize(records, bounds, options) {
  * @param {number} minSeq - 只认领 seq 大于该值的事件；传 -1 表示全认领。
  * @returns {Array<object>} - 抽出的用量记录。
  */
-function extractUsage(events, minSeq) {
+function extractUsage(events, minSeq) { // 从一条会话日志里抽出带用量的模型调用
   const rows = []; // 抽出的用量记录
   for (const event of events) { // 逐个事件检查
     if (event === null || typeof event !== 'object') continue; // 跳过异常事件
@@ -230,14 +230,20 @@ function extractUsage(events, minSeq) {
     const seq = typeof event.seq === 'number' ? event.seq : 0; // 事件序号
     if (seq <= minSeq) continue; // 超出认领范围
     const source = (data.message === null || typeof data.message !== 'object' ? {} : data.message.source) || {}; // 该步实际调用的供应商与模型
+    const provider = typeof source.provider === 'string' ? source.provider : 'unknown'; // 供应商标识
+    const model = typeof source.model === 'string' ? source.model : 'unknown'; // 模型标识
+    const input = usage.inputTokens || 0; // 未命中缓存的输入 token
+    const output = usage.outputTokens || 0; // 输出 token
+    const cacheRead = usage.cacheReadTokens || 0; // 命中缓存读取的 token
     rows.push({ // 记一条用量
       time: typeof event.time === 'number' ? event.time : 0, // 事件时间戳
-      provider: typeof source.provider === 'string' ? source.provider : 'unknown', // 供应商标识
-      model: typeof source.model === 'string' ? source.model : 'unknown', // 模型标识
-      input: usage.inputTokens || 0, // 未命中缓存的输入 token
-      output: usage.outputTokens || 0, // 输出 token
-      cacheRead: usage.cacheReadTokens || 0, // 命中缓存读取的 token
-      total: usage.totalTokens || 0, // 该次调用总量
+      provider, // 供应商标识
+      model, // 模型标识
+      key: `${provider}::${model}`, // 预拼好的匹配键，供按模型筛选时免去重复拼接
+      input, // 未命中缓存的输入 token
+      output, // 输出 token
+      cacheRead, // 命中缓存读取的 token
+      total: usage.totalTokens || input + output + cacheRead, // 该次调用总量；缺字段时用三项之和兜底
     }); // 结束记录
   } // 结束逐事件检查
   return rows; // 返回用量记录
@@ -258,20 +264,62 @@ function seedBoundary(events) {
   return boundary; // 返回分界序号
 }
 
-/**
- * 读取全部会话并汇总 Token 用量。
- * @param {object} sessionQuery - DSH 的会话查询服务。
- * @param {{ now?: number, timeZone?: string, ttlMs?: number, force?: boolean }} options - 可选项。
- * @returns {Promise<object>} - 聚合结果。
- */
-export async function collectTokenUsage(sessionQuery, options = {}) {
+/** 读取全部会话并按本日/本周/本月汇总 Token 用量。 */
+export async function collectTokenUsage(sessionQuery, options = {}) { // 读取全部会话并汇总 Token 用量
   const now = typeof options.now === 'number' ? options.now : Date.now(); // 当前时刻
   const timeZone = typeof options.timeZone === 'string' && options.timeZone.length > 0 ? options.timeZone : 'Asia/Shanghai'; // 统计时区
   const ttlMs = typeof options.ttlMs === 'number' ? options.ttlMs : DEFAULT_TTL_MS; // 缓存时长
   const force = options.force === true; // 是否跳过缓存
-  const state = collectTokenUsage.state; // 模块级缓存，跨请求复用
-  if (!force && state.cache !== null && now - state.cachedAt < ttlMs) { // 命中新鲜缓存
-    return state.cache; // 直接返回缓存结果
+  const cacheKey = `${timeZone}|${new Date(now).toISOString().slice(0, 10)}`; // 时区与本地日期都一致时缓存的统计口径才不变
+  const scan = await collectUsageRows(sessionQuery, { now, ttlMs, force, cacheKey }); // 带缓存地重放会话日志
+  const vendor = typeof options.vendor === 'string' ? options.vendor.trim() : ''; // 可选：只统计某个供应商
+  const model = typeof options.model === 'string' ? options.model.trim() : ''; // 可选：只统计某个模型
+  const rows = vendor.length > 0 || model.length > 0 // 带筛选时按供应商/模型过滤
+    ? scan.rows.filter((row) => (vendor.length === 0 || row.provider === vendor) && (model.length === 0 || row.model === model)) // 精确匹配，避免同名模型串线
+    : scan.rows; // 不筛选时直接用全部记录
+  const bounds = periodBounds(now, timeZone); // 三个周期的起点
+  const periods = {}; // 各周期汇总
+  for (const period of TOKEN_PERIODS) periods[period] = summarize(rows, bounds[period], { period, timeZone, now }); // 逐周期汇总，各自带上匹配的时间序列
+  const daily = new Map(); // 日期到当日合计的映射
+  for (const row of rows) { // 逐条记录归到日期
+    const day = localDate(row.time, timeZone); // 该条记录的本地日期
+    const key = `${day.y}-${String(day.m).padStart(2, '0')}-${String(day.d).padStart(2, '0')}`; // 日期键
+    let bucket = daily.get(key); // 当天的合计桶
+    if (bucket === undefined) { // 首次见到这天
+      bucket = { day: key, input: 0, output: 0, cacheRead: 0, total: 0, calls: 0 }; // 新建桶
+      daily.set(key, bucket); // 登记
+    } // 结束首次判断
+    bucket.input += row.input; // 累加当天未缓存输入
+    bucket.output += row.output; // 累加当天输出
+    bucket.cacheRead += row.cacheRead; // 累加当天缓存读取
+    bucket.total += row.total; // 累加当天总量
+    bucket.calls += 1; // 累加当天调用次数
+  } // 结束按日归并
+  const dailyList = [...daily.values()].sort((a, b) => (a.day < b.day ? -1 : 1)).slice(-30); // 按日期升序，只保留最近 30 天给界面画趋势
+  return { // 组装返回结果
+    fetchedAt: now, // 抓取时间
+    timeZone, // 统计时区
+    sessions: scan.sessions, // 会话统计
+    periods, // 三个周期的汇总
+    daily: dailyList, // 近 N 天的每日趋势
+    spanDays: PERIOD_SPAN_DAYS, // 周期跨度说明，供界面标注
+  }; // 结束组装
+}
+
+/**
+ * 按需重放会话日志并返回全部用量记录，结果按「时区 + 本地日期」缓存，供各面板共用。
+ * @param {object} sessionQuery - DSH 的会话查询服务。
+ * @param {{ now?: number, ttlMs?: number, force?: boolean, cacheKey?: string }} options - 当前时刻、缓存时长、是否跳过缓存与缓存键。
+ * @returns {Promise<{ rows: Array<object>, sessions: object, scannedAt: number, cached: boolean }>} - 用量记录与扫描统计。
+ */
+export async function collectUsageRows(sessionQuery, options = {}) { // 复用会话日志重放，避免各面板各读一遍
+  const now = typeof options.now === 'number' ? options.now : Date.now(); // 当前时刻
+  const ttlMs = typeof options.ttlMs === 'number' ? options.ttlMs : DEFAULT_TTL_MS; // 缓存时长
+  const force = options.force === true; // 是否跳过缓存
+  const cacheKey = typeof options.cacheKey === 'string' ? options.cacheKey : 'default'; // 缓存分组键，口径不同的事件不能混用
+  const state = collectUsageRows.state; // 模块级缓存，跨请求复用
+  if (!force && state.rows !== null && state.cacheKey === cacheKey && now - state.cachedAt < ttlMs) { // 命中新鲜缓存
+    return { rows: state.rows, sessions: state.sessions, scannedAt: state.cachedAt, cached: true }; // 直接返回上次重放结果
   } // 结束缓存判断
   const listed = await sessionQuery.listSessions(); // 列出全部逻辑会话，最新的在前
   const records = Array.isArray(listed) ? listed : []; // 归一成数组
@@ -321,47 +369,22 @@ export async function collectTokenUsage(sessionQuery, options = {}) {
     for (const row of extractUsage(events, minSeq)) rows.push(row); // 抽出并汇总用量
     if (parentPresent && !parentReadable) state.unreadable.add(id); // 记下这个会话自己也读不动，供后续判断
   } // 结束逐会话处理
-  const bounds = periodBounds(now, timeZone); // 三个周期的起点
-  const periods = {}; // 各周期汇总
-  for (const period of TOKEN_PERIODS) periods[period] = summarize(rows, bounds[period], { period, timeZone, now }); // 逐周期汇总，各自带上匹配的时间序列
-  const daily = new Map(); // 日期到当日合计的映射
-  for (const row of rows) { // 逐条记录归到日期
-    const day = localDate(row.time, timeZone); // 该条记录的本地日期
-    const key = `${day.y}-${String(day.m).padStart(2, '0')}-${String(day.d).padStart(2, '0')}`; // 日期键
-    let bucket = daily.get(key); // 当天的合计桶
-    if (bucket === undefined) { // 首次见到这天
-      bucket = { day: key, input: 0, output: 0, cacheRead: 0, total: 0, calls: 0 }; // 新建桶
-      daily.set(key, bucket); // 登记
-    } // 结束首次判断
-    bucket.input += row.input; // 累加当天未缓存输入
-    bucket.output += row.output; // 累加当天输出
-    bucket.cacheRead += row.cacheRead; // 累加当天缓存读取
-    bucket.total += row.total; // 累加当天总量
-    bucket.calls += 1; // 累加当天调用次数
-  } // 结束按日归并
-  const dailyList = [...daily.values()].sort((a, b) => (a.day < b.day ? -1 : 1)).slice(-30); // 按日期升序，只保留最近 30 天给界面画趋势
-  const result = { // 组装返回结果
-    fetchedAt: now, // 抓取时间
-    timeZone, // 统计时区
-    sessions: { listed: records.length, scanned, skipped, failed }, // 会话统计
-    periods, // 三个周期的汇总
-    daily: dailyList, // 近 N 天的每日趋势
-    spanDays: PERIOD_SPAN_DAYS, // 周期跨度说明，供界面标注
-  }; // 结束组装
-  state.cache = result; // 写入缓存
+  const sessions = { listed: records.length, scanned, skipped, failed }; // 会话统计
+  state.rows = rows; // 写入缓存
+  state.sessions = sessions; // 缓存会话统计
   state.cachedAt = now; // 记录缓存时间
+  state.cacheKey = cacheKey; // 记录缓存口径
   state.unreadable = new Set(); // 重置读不动的会话集合
-  return result; // 返回结果
+  return { rows, sessions, scannedAt: now, cached: false }; // 返回本次重放结果
 }
 
-/** 模块级缓存：跨请求复用聚合结果，避免每次都重放会话日志。 */
-collectTokenUsage.state = { cache: null, cachedAt: 0, unreadable: new Set() };
+/** 模块级缓存：跨面板复用同一次会话日志重放，避免重复读文件。 */
+collectUsageRows.state = { rows: null, sessions: null, cachedAt: 0, cacheKey: '', unreadable: new Set() };
 
-/**
- * 清空聚合缓存，供调试或强制刷新使用。
- * @returns {void}
- */
-export function resetTokenUsageCache() {
-  collectTokenUsage.state.cache = null; // 丢掉缓存结果
-  collectTokenUsage.state.cachedAt = 0; // 把缓存时间归零
+/** 清空聚合缓存，供调试或强制刷新使用。 */
+export function resetTokenUsageCache() { // 清空聚合缓存
+  collectUsageRows.state.rows = null; // 丢掉缓存的用量记录
+  collectUsageRows.state.sessions = null; // 丢掉会话统计
+  collectUsageRows.state.cachedAt = 0; // 把缓存时间归零
+  collectUsageRows.state.cacheKey = ''; // 清空缓存口径
 }

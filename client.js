@@ -52,6 +52,9 @@ window.__ModuleLoader__.load({
     const OPENCODE_USAGE_FALLBACK_KEY = 'dsh.deepseek-pet.opencode.usageFallbackUrl'; // 备用用量来源的本地键
     const OPENCODE_ORG_KEY = 'dsh.deepseek-pet.opencode.orgId'; // 团队工作区 id 的本地键
     const OPENCODE_USAGE_WINDOWS = [['rolling', 'ocWindowRolling'], ['weekly', 'ocWindowWeekly'], ['monthly', 'ocWindowMonthly']]; // 与服务端一致的三个窗口
+    const OPENCODE_ANALYSIS_PATH = 'api/deepseek-pet/opencode/analysis'; // 用量节奏分析路由的文档相对地址
+    const OPENCODE_ANALYSIS_VENDOR_KEY = 'dsh.deepseek-pet.opencode.analysis.vendor'; // 分析面板所选供应商的本地键
+    const OPENCODE_ANALYSIS_MODEL_KEY = 'dsh.deepseek-pet.opencode.analysis.model'; // 分析面板所选模型的本地键
     const CHAT_MODEL_KEY = 'dsh.deepseek-pet.chat.model'; // 对话面板所选模型的本地键
     const CHAT_SESSION_KEY = 'dsh.deepseek-pet.chat.sessionId'; // 对话专用会话身份的本地键，重开页面后还能接着聊
     const CHAT_REPLY_TIMEOUT_MS = 120000; // 单次回复最长等待时间，超时给出提示而不是一直转圈
@@ -119,6 +122,44 @@ window.__ModuleLoader__.load({
         ocCheck: 'Check for changes now', // 立即检查子操作
         ocHistory: 'View recent changes', // 查看历史子操作
         ocUsage: 'Remaining usage', // 剩余用量子操作
+        ocAnalysis: 'Usage pace analysis', // 用量节奏分析子操作
+        anTitle: 'OpenCode usage pace', // 分析面板标题
+        anDesc: 'Matches this machine’s DSH token usage against the OpenCode allowance readings. Pick a vendor or model so the pace only covers that slice.', // 面板说明
+        anRefresh: 'Refresh analysis', // 刷新读数与重算
+        anReanalyze: 'Recompute', // 只重算，不请求上游
+        anRunning: 'Analyzing…', // 计算中
+        anReading: 'Reading allowance…', // 正在请求读数
+        anNoReading: 'No allowance reading yet. Press “Refresh analysis” to fetch one; the pace needs at least two readings an hour or so apart.', // 缺读数
+        anNeedKey: 'Save an OpenCode API key first to fetch allowance readings.', // 缺 Key
+        anVendor: 'Vendor', // 供应商筛选标签
+        anModel: 'Model', // 模型筛选标签
+        anAllModels: 'Whole vendor', // 整个供应商
+        anSinceLast: 'Based on token usage after the last reading', // 速度口径：读数之后实测
+        anWindow15: 'Based on the last 15 minutes', // 速度口径：近 15 分钟
+        anActivity: 'Based on the last 2 hours', // 速度口径：近两小时活跃
+        anLastDelta: 'Based on the last reading change', // 速度口径：最近一次百分比变化
+        anNoteModel: 'This model belongs to OpenCode Go, so the pace is its own usage only.', // 单模型口径说明
+        anNoteProvider: 'This model is not in the OpenCode Go catalog; the pace only covers the vendor-wide tokens of this host.', // 非 opencode 模型说明
+        anSpeed: 'Current speed', // 速度行标签
+        anSpeedValue: 'tokens/hour', // 速度单位
+        anCalls: 'calls/hour', // 调用速度单位
+        anPerPoint: 'Each 1% of allowance ≈', // 换算价
+        anPeriod: 'Window progress', // 周期进度行
+        anResetAt: 'Resets', // 重置时间前缀
+        anEta: 'At this pace it lasts', // 撑多久
+        anEtaEmpty: 'No limit hit before reset', // 撑得到重置
+        anProjected: 'Projected by reset', // 预计到重置会用掉
+        anWasted: 'Unusable allowance', // 会浪费的额度
+        anNotEnough: 'Not enough samples yet. Keep using the model and check again later.', // 样本不足
+        anStateOver: 'Burning too fast — will run out before reset', // 过快
+        anStateUnder: 'Using too little — allowance will expire unused', // 过少
+        anStateOnTrack: 'On track', // 正常
+        anStateEmpty: 'Allowance spent', // 已用完
+        anStateIdle: 'Idle', // 没有新进展
+        anStateUnknown: 'Not enough data', // 数据不足
+        anStateNoQuota: 'Unavailable', // 无读数
+        anEmptyHint: 'No token usage recorded for this slice yet.', // 该筛选下没有用量
+        anStale: 'Showing the last saved reading.', // 旧读数
         tkMenu: 'Token usage', // Token 用量菜单项
         tkTitle: 'Token usage', // Token 用量面板标题
         tkDesc: 'Aggregated from this machine’s DSH session logs. Cached reads count toward the total.', // 面板说明
@@ -292,6 +333,44 @@ window.__ModuleLoader__.load({
         ocCheck: '立即检查变动', // 立即检查子操作
         ocHistory: '查看最近变动记录', // 查看历史子操作
         ocUsage: '剩余用量', // 剩余用量子操作
+        ocAnalysis: '用量节奏分析', // 用量节奏分析子操作
+        anTitle: 'OpenCode 用量节奏分析', // 分析面板标题
+        anDesc: '把本机 DSH 的 token 用量和 OpenCode 额度读数按时间对齐：算出现在烧得快不快、能不能撑到刷新，或者照这个进度到刷新只会用掉多少。先选供应商或模型，推算只覆盖这一块开销。', // 面板说明
+        anRefresh: '刷新分析', // 刷新读数与重算
+        anReanalyze: '重新计算', // 只重算，不请求上游
+        anRunning: '正在分析…', // 计算中
+        anReading: '正在读取额度…', // 正在请求读数
+        anNoReading: '还没有额度读数。先点「刷新分析」取一次，节奏预估需要至少两次相隔一小时的读数。', // 缺读数
+        anNeedKey: '先保存 OpenCode API Key，才能读取额度。', // 缺 Key
+        anVendor: '供应商', // 供应商筛选标签
+        anModel: '模型', // 模型筛选标签
+        anAllModels: '整个供应商', // 整个供应商
+        anSinceLast: '按上次读数之后的实际用量计算', // 速度口径：读数之后实测
+        anWindow15: '按最近 15 分钟计算', // 速度口径：近 15 分钟
+        anActivity: '按最近 2 小时活跃用量计算', // 速度口径：近两小时活跃
+        anLastDelta: '按最近一次读数变化计算', // 速度口径：最近一次百分比变化
+        anNoteModel: '这个模型属于 OpenCode Go，推算只覆盖它自己的用量。', // 单模型口径说明
+        anNoteProvider: '这个模型不在 OpenCode Go 目录里，推算只覆盖本机这条线路的整体用量。', // 非 opencode 模型说明
+        anSpeed: '当前速度', // 速度行标签
+        anSpeedValue: 'tokens/小时', // 速度单位
+        anCalls: '次/小时', // 调用速度单位
+        anPerPoint: '每 1% 额度约', // 换算价
+        anPeriod: '窗口进度', // 周期进度行
+        anResetAt: '重置于', // 重置时间前缀
+        anEta: '按此速度还能用', // 撑多久
+        anEtaEmpty: '能撑到刷新', // 撑得到重置
+        anProjected: '到刷新预计会用掉', // 预计到重置会用掉
+        anWasted: '会浪费的额度', // 会浪费的额度
+        anNotEnough: '样本还不够，多跑几轮再来看预估。', // 样本不足
+        anStateOver: '用得过快，撑不到刷新', // 过快
+        anStateUnder: '用得过少，额度会作废', // 过少
+        anStateOnTrack: '节奏正常', // 正常
+        anStateEmpty: '额度已用完', // 已用完
+        anStateIdle: '暂无进展', // 没有新进展
+        anStateUnknown: '数据不足', // 数据不足
+        anStateNoQuota: '暂无读数', // 无读数
+        anEmptyHint: '这个筛选下还没有记录到 token 用量。', // 该筛选下没有用量
+        anStale: '展示的是上次保存的读数。', // 旧读数
         tkMenu: 'Token 用量', // Token 用量菜单项
         tkTitle: 'Token 用量统计', // Token 用量面板标题
         tkDesc: '从本机 DSH 会话日志聚合而来，缓存命中也计入总量。', // 面板说明
@@ -730,6 +809,30 @@ window.__ModuleLoader__.load({
 .dspet-token-axis { display: flex; gap: 3px; margin-top: 3px; } /* 柱状图下方的坐标标签行 */
 .dspet-token-axis-label { flex: 1 1 0; min-width: 4px; overflow: hidden; text-align: center; font-size: 9px; line-height: 12px; color: var(--dsw-alias-label-secondary, #6b6b76); } /* 单个坐标标签 */
 .dspet-token-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; color: var(--dsw-alias-label-secondary, #6b6b76); font-size: 10px; } /* 面板底部说明 */
+.dspet-an-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; } /* 供应商与模型筛选行 */
+.dspet-an-filters .dspet-select { width: auto; min-width: 140px; max-width: 220px; height: 30px; padding: 0 8px; } /* 筛选下拉宽度 */
+.dspet-an-overview { padding: 10px 12px; margin: 8px 0 6px; border-radius: 10px; border: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, .12)); background: var(--dsw-alias-bg-base, #fff); border-left: 4px solid #4d6bfe; } /* 顶部结论卡片 */
+.dspet-an-overview[data-state="over"] { border-left-color: #eb5757; } /* 过快用红色边缘 */
+.dspet-an-overview[data-state="under"] { border-left-color: #f2994a; } /* 过少用橙色边缘 */
+.dspet-an-overview[data-state="onTrack"] { border-left-color: #27ae60; } /* 正常用绿色边缘 */
+.dspet-an-overview[data-state="idle"], .dspet-an-overview[data-state="unknown"] { border-left-color: #9aa0a6; } /* 数据不足用灰色边缘 */
+.dspet-an-head { display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 700; } /* 结论标题行 */
+.dspet-an-msg { margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-secondary, #6b6b76); } /* 结论说明 */
+.dspet-an-fact { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 11px; color: var(--dsw-alias-label-secondary, #6b6b76); } /* 结论里的关键数字 */
+.dspet-an-window { padding: 8px 10px; border: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, .12)); border-radius: 8px; background: var(--dsw-alias-bg-base, #fff); } /* 单窗口卡片 */
+.dspet-an-window-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 600; } /* 窗口标题与状态 */
+.dspet-an-badge { padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, .06)); color: var(--dsw-alias-label-secondary, #6b6b76); } /* 状态徽标 */
+.dspet-an-badge[data-state="over"] { background: rgba(235, 87, 87, .14); color: #c62b2b; } /* 过快徽标 */
+.dspet-an-badge[data-state="under"] { background: rgba(242, 153, 74, .18); color: #b26a1e; } /* 过少徽标 */
+.dspet-an-badge[data-state="onTrack"] { background: rgba(39, 174, 96, .16); color: #1f8a4c; } /* 正常徽标 */
+.dspet-an-track { position: relative; height: 8px; margin: 6px 0 4px; border-radius: 999px; background: var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, .08)); overflow: hidden; } /* 已用比例槽 */
+.dspet-an-fill { height: 100%; border-radius: 999px; background: #4d6bfe; transition: width .25s ease; } /* 已用比例条 */
+.dspet-an-fill[data-state="over"] { background: #eb5757; } /* 过快转红 */
+.dspet-an-fill[data-state="under"] { background: #f2994a; } /* 过少转橙 */
+.dspet-an-marker { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--dsw-alias-label-primary, #1b1b1f); opacity: .55; } /* 时间进度刻度 */
+.dspet-an-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--dsw-alias-label-secondary, #6b6b76); } /* 窗口细节 */
+.dspet-an-speed { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 6px 0; font-size: 12px; } /* 速度与换算价 */
+.dspet-an-speed strong { font-size: 14px; } /* 速度数字 */
 `;
 
     function clampPosition(right, bottom) {
@@ -1559,6 +1662,7 @@ window.__ModuleLoader__.load({
               const response = await fetch(hostRoute(`${TOKEN_USAGE_ROUTE}?${query}`), { headers: { accept: 'application/json' } }); // 请求统计路由
               const payload = await response.json().catch(() => ({ ok: false, error: `HTTP ${response.status}` })); // 解析响应
               if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`); // 检查状态并带上原因
+              if (seq !== runSeq.current) return; // 已有更新的一轮在跑，丢弃这次结果
               setData(payload); // 保存结果
             } catch (cause) { // 统计失败
               setError(cause instanceof Error ? cause.message : String(cause)); // 显示原因
@@ -1672,6 +1776,164 @@ window.__ModuleLoader__.load({
           ); // 结束遮罩
         } // 结束 Token 用量面板
 
+        function QuotaAnalysis(props) { // OpenCode 额度节奏分析面板：判断是不是用得太快/太慢
+          const t = props.t; // 翻译函数
+          const [data, setData] = React.useState(null); // Host 返回的分析结果
+          const [busy, setBusy] = React.useState(false); // 计算中
+          const [reading, setReading] = React.useState(false); // 是否正在读取额度
+          const [error, setError] = React.useState(''); // 错误文案
+          const [needKey, setNeedKey] = React.useState(false); // 是否缺少 Key
+          const [vendor, setVendor] = React.useState(() => { try { return window.localStorage.getItem(OPENCODE_ANALYSIS_VENDOR_KEY) ?? ''; } catch (error) { return ''; } }); // 所选供应商
+          const [model, setModel] = React.useState(() => { try { return window.localStorage.getItem(OPENCODE_ANALYSIS_MODEL_KEY) ?? ''; } catch (error) { return ''; } }); // 所选模型
+          const started = React.useRef(false); // 防止重复自动加载
+          const runSeq = React.useRef(0); // 计算序号，丢弃被新一轮取代的旧结果，避免拿到上一筛选的结论
+          const serverVendor = React.useRef(''); // 服务端实际使用的供应商（空筛选时它会自动回落到用量最大的那个）
+
+          const analyze = async (force = false) => { // 拉一次分析结果
+            const seq = (runSeq.current += 1); // 本轮序号
+            setBusy(true); setError(''); // 进入计算态
+            try { // 捕获失败
+              const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'; // 浏览器所在时区
+              const query = `timeZone=${encodeURIComponent(zone)}&vendor=${encodeURIComponent(vendor)}&model=${encodeURIComponent(model)}${force ? '&force=1' : ''}`; // 查询串带上筛选
+              const response = await fetch(hostRoute(`${OPENCODE_ANALYSIS_PATH}?${query}`), { headers: { accept: 'application/json' } }); // 请求分析路由
+              const payload = await response.json().catch(() => ({ ok: false, error: `HTTP ${response.status}` })); // 解析响应
+              if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`); // 检查状态并带上原因
+              serverVendor.current = typeof payload.vendor === 'string' ? payload.vendor : ''; // 记下服务端实际使用的供应商
+              if (!vendor) setVendor(serverVendor.current); // 没选供应商时让下拉跟随用量最大的那个，下一轮按它重算
+              if (seq !== runSeq.current) return; // 已有更新的一轮在跑，丢弃这次结果
+              setData(payload); // 保存结果
+            } catch (cause) { // 分析失败
+              if (seq === runSeq.current) setError(cause instanceof Error ? cause.message : String(cause)); // 只让最新一轮显示原因
+            } finally { // 结束
+              if (seq === runSeq.current) setBusy(false); // 只有最新一轮才恢复按钮
+            } // 结束异常
+          }; // 结束分析
+
+          const refresh = async () => { // 先取一次读数再分析
+            setReading(true); setError(''); // 进入读取态
+            try { // 捕获失败
+              const payload = await props.runUsage({}); // 用已保存的 Key 读取最新额度
+              setNeedKey(payload.hasKey !== true); // 记录 Key 状态
+              if (Array.isArray(payload.errors) && payload.errors.length > 0) setError(payload.errors.join('；')); // 部分来源失败也要告知
+            } catch (cause) { // 读取失败
+              setError(cause instanceof Error ? cause.message : String(cause)); // 显示原因
+            } finally { // 结束
+              setReading(false); // 恢复按钮
+            } // 结束异常
+            await analyze(); // 无论读数成败都用现有缓存分析一次
+          }; // 结束刷新
+
+          const analyzeRef = React.useRef(analyze); analyzeRef.current = analyze; // 自动加载使用最新闭包
+          const refreshRef = React.useRef(refresh); refreshRef.current = refresh; // 自动刷新使用最新闭包
+
+          React.useEffect(() => { // 打开时先读一次读数再分析
+            if (started.current) return; // 只执行一次
+            started.current = true; // 标记已执行
+            refreshRef.current(); // 触发读取与计算
+          }, []); // 只依赖首次挂载
+
+          React.useEffect(() => { // 切换筛选后重新分析
+            if (!started.current) return; // 首次由上面的 effect 负责
+            setData(null); // 先清掉旧结论，免得旧筛选的数字讲新筛选的故事
+            analyzeRef.current(); // 按新筛选重算
+          }, [vendor, model]); // 依赖筛选条件
+
+          React.useEffect(() => { try { window.localStorage.setItem(OPENCODE_ANALYSIS_VENDOR_KEY, vendor); } catch (error) { /* 忽略存储失败 */ } }, [vendor]); // 记住所选供应商
+          React.useEffect(() => { try { window.localStorage.setItem(OPENCODE_ANALYSIS_MODEL_KEY, model); } catch (error) { /* 忽略存储失败 */ } }, [model]); // 记住所选模型
+
+          React.useEffect(() => { // Escape 关闭
+            const onKeyDown = (event) => { if (event.key === 'Escape') props.onClose(); }; // 随时可关闭
+            window.addEventListener('keydown', onKeyDown); // 监听
+            return () => window.removeEventListener('keydown', onKeyDown); // 清理
+          }, [props.onClose]); // 依赖关闭回调
+
+          React.useImperativeHandle(props.ref, () => ({ refresh: () => refreshRef.current() }), []); // 向宠物暴露刷新入口：供应商对话框保存后先取读数再重算
+          const maskClose = (event) => { if (event.target === event.currentTarget) props.onClose(); }; // 点遮罩关闭
+          const number = (value) => (typeof value === 'number' && Number.isFinite(value) ? Math.round(value).toLocaleString('en-US') : '—'); // 千分位整数
+          const compact = (value) => { if (typeof value !== 'number' || !Number.isFinite(value)) return '—'; if (value >= 1e8) return `${(value / 1e8).toFixed(2)} 亿`; if (value >= 1e4) return `${(value / 1e4).toFixed(1)} 万`; return String(Math.round(value)); }; // 大数用万/亿
+          const percent = (value) => (typeof value === 'number' && Number.isFinite(value) ? `${Math.round(value)}%` : '—'); // 百分比
+          const duration = (ms) => { if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0) return '—'; const minutes = Math.round(ms / 60000); if (minutes < 60) return `${minutes} 分钟`; const hours = Math.floor(minutes / 60); if (hours < 48) return `${hours} 小时${minutes % 60 > 0 ? ` ${minutes % 60} 分` : ''}`; return `${Math.floor(hours / 24)} 天 ${hours % 24} 小时`; }; // 时长格式化
+          const timeLabel = (value) => { const date = new Date(value); return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString(); }; // 时间格式
+          const stateLabel = (state) => (state === 'over' ? t('anStateOver') : state === 'under' ? t('anStateUnder') : state === 'onTrack' ? t('anStateOnTrack') : state === 'empty' ? t('anStateEmpty') : state === 'noQuota' ? t('anStateNoQuota') : state === 'idle' ? t('anStateIdle') : t('anStateUnknown')); // 状态文案
+          const basisLabel = (basis) => (basis === 'since-last' ? t('anSinceLast') : basis === 'last-delta' ? t('anLastDelta') : t('anActivity')); // 速度口径文案
+          const windowLabel = (key) => (key === 'rolling' ? t('ocWindowRolling') : key === 'weekly' ? t('ocWindowWeekly') : t('ocWindowMonthly')); // 窗口名称
+          const windows = Array.isArray(data?.windows) ? data.windows : []; // 三个窗口
+          const overview = data?.overview ?? null; // 顶部结论
+          const speed = data?.speed ?? null; // 速度信息
+          const sampleOk = data !== null && (data.tokenPerPoint !== null || (data.vendor && windows.some((item) => item.state !== 'noQuota'))); // 是否已有可用读数与样本
+
+          const filters = h('div', { className: 'dspet-an-filters' }, // 筛选行
+            h('label', { className: 'dspet-field' }, h('span', { className: 'dspet-field-label' }, t('anVendor')), h('select', { className: 'dspet-select', value: vendor || serverVendor.current, 'aria-label': t('anVendor'), disabled: busy, onChange: (event) => { setVendor(event.target.value); setModel(''); } }, (Array.isArray(data?.vendors) ? data.vendors : []).map((item) => h('option', { key: item.id, value: item.id }, `${item.id} · ${compact(item.total)}`)))), // 供应商下拉
+            h('label', { className: 'dspet-field' }, h('span', { className: 'dspet-field-label' }, t('anModel')), h('select', { className: 'dspet-select', value: model, 'aria-label': t('anModel'), disabled: busy, onChange: (event) => setModel(event.target.value) }, h('option', { value: '' }, t('anAllModels')), (Array.isArray(data?.models) ? data.models : []).map((item) => h('option', { key: item.model, value: item.model }, `${item.model} · ${compact(item.total)}${item.opencode ? ' ★' : ''}`)))), // 模型下拉，★ 表示属于 OpenCode Go 目录
+          ); // 结束筛选行
+
+          const overviewCard = overview === null ? null : h('div', { className: 'dspet-an-overview', 'data-state': overview.state }, // 顶部结论
+            h('div', { className: 'dspet-an-head' }, stateLabel(overview.state), overview.key ? h('span', { className: 'dspet-chip' }, windowLabel(overview.key)) : null), // 结论标题
+            h('p', { className: 'dspet-an-msg' }, overview.message), // 结论说明
+            h('div', { className: 'dspet-an-fact' }, // 关键数字
+              typeof overview.etaMs === 'number' ? h('span', null, `${t('anEta')} ${duration(overview.etaMs)}`) : null, // 撑多久
+              typeof overview.projectedPercent === 'number' ? h('span', null, `${t('anProjected')} ${percent(overview.projectedPercent)}`) : null, // 预计到刷新用掉多少
+              typeof overview.leftoverPercent === 'number' && overview.leftoverPercent > 0 ? h('span', null, `${t('anWasted')} ${percent(overview.leftoverPercent)}`) : null, // 会浪费多少
+              typeof overview.timeLeftMs === 'number' ? h('span', null, `${t('anPeriod')} ${100 - Math.round(overview.timeLeftMs / ((overview.key === 'rolling' ? 5 : overview.key === 'weekly' ? 168 : 720) * 3600000) * 100)}%`) : null, // 周期进度
+            ), // 结束关键数字
+          ); // 结束结论卡片
+
+          const speedCard = speed === null || data === null ? null : h('div', { className: 'dspet-an-speed' }, // 速度与换算价
+            h('span', null, `${t('anSpeed')} `, h('strong', null, compact(speed.perHour)), ` ${t('anSpeedValue')}`), // 换算后的速度
+            typeof speed.instantPerHour === 'number' ? h('span', { className: 'dspet-chip' }, `${t('anSpeed')} ${compact(speed.instantPerHour)}`) : null, // 近窗活跃速度
+            typeof speed.callsPerHour === 'number' ? h('span', { className: 'dspet-chip' }, `${speed.callsPerHour.toFixed(1)} ${t('anCalls')}`) : null, // 调用速度
+            h('span', { className: 'dspet-chip' }, basisLabel(speed.basis)), // 速度口径
+            typeof data.tokenPerPoint === 'number' ? h('span', { className: 'dspet-chip' }, `${t('anPerPoint')} ${compact(data.tokenPerPoint)}`) : null, // 换算价
+            data.filterNote === 'model' ? h('span', { className: 'dspet-chip' }, t('anNoteModel')) : data.filterNote === 'provider' ? h('span', { className: 'dspet-chip' }, t('anNoteProvider')) : null, // 口径说明
+          ); // 结束速度卡片
+
+          const windowCard = (item) => { // 单个窗口卡片
+            const used = typeof item.percent === 'number' ? item.percent : 0; // 已用百分比
+            const elapsed = typeof item.elapsedFraction === 'number' ? Math.round(item.elapsedFraction * 100) : null; // 时间进度
+            return h('div', { key: item.key, className: 'dspet-an-window' }, // 卡片容器
+              h('div', { className: 'dspet-an-window-head' }, h('span', null, windowLabel(item.key)), h('span', { className: 'dspet-an-badge', 'data-state': item.state }, stateLabel(item.state))), // 标题与状态
+              h('div', { className: 'dspet-an-track', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': Math.round(used), 'aria-label': windowLabel(item.key) }, // 进度槽
+                h('div', { className: 'dspet-an-fill', 'data-state': item.state, style: { width: `${Math.min(100, Math.max(used > 0 ? 2 : 0, used))}%` } }), // 已用比例条；快用完时保底 2% 让进度色可见
+                elapsed === null ? null : h('div', { className: 'dspet-an-marker', style: { left: `calc(${Math.max(0, Math.min(100, elapsed))}% - 1px)` }, title: `${t('anPeriod')} ${elapsed}%` }), // 时间进度刻度
+              ), // 结束进度槽
+              h('p', { className: 'dspet-an-msg' }, item.message), // 该窗口的说明
+              h('div', { className: 'dspet-an-meta' }, // 窗口细节
+                h('span', null, `${t('ocUsageUsed')} ${percent(item.percent)}`), // 已用百分比
+                item.resetsAt ? h('span', null, `${t('anResetAt')} ${timeLabel(item.resetsAt)}`) : null, // 重置时间
+                typeof item.etaMs === 'number' ? h('span', null, `${t('anEta')} ${duration(item.etaMs)}`) : null, // 撑多久
+                typeof item.projectedPercent === 'number' ? h('span', null, `${t('anProjected')} ${percent(item.projectedPercent)}`) : null, // 预计到重置用掉多少
+                typeof item.headroomTokens === 'number' ? h('span', null, `${t('anEtaEmpty')} · ${compact(item.headroomTokens)} ${t('tkTokenUnit')}`) : null, // 剩余额度折算成 token
+                typeof item.deltaPts === 'number' ? h('span', null, `Δ ${item.deltaPts.toFixed(1)}%`) : null, // 最近一次读数变化（上次读数 → 本次）
+              ), // 结束细节
+            ); // 结束卡片
+          }; // 结束窗口卡片
+
+          return h('div', { className: 'dspet-modal', onPointerDown: maskClose }, // 遮罩
+            h('div', { className: 'dspet-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'dspet-an-title' }, // 面板
+              h('h2', { id: 'dspet-an-title', className: 'dspet-dialog-title' }, t('anTitle')), // 标题
+              h('p', { className: 'dspet-dialog-desc' }, t('anDesc')), // 说明
+              h('div', { className: 'dspet-monitor-actions' }, // 操作行
+                h('button', { type: 'button', className: 'dspet-btn dspet-btn-primary', onClick: refresh, disabled: busy || reading }, busy || reading ? t('anRunning') : t('anRefresh')), // 刷新读数并分析
+                h('button', { type: 'button', className: 'dspet-btn', onClick: () => analyze(true), disabled: busy || reading }, t('anReanalyze')), // 只重算
+                data?.reading?.fetchedAt ? h('span', { className: 'dspet-chip' }, `${t('ocCheckedAt')} ${timeLabel(data.reading.fetchedAt)}`) : null, // 读数时间
+              ), // 结束操作行
+              filters, // 筛选
+              reading ? h('p', { className: 'dspet-field-hint' }, t('anReading')) : null, // 正在读取额度
+              error.length > 0 ? h('p', { className: 'dspet-error' }, `${t('ocError')}：${error}`) : null, // 错误
+              needKey ? h('p', { className: 'dspet-field-hint' }, t('anNeedKey')) : null, // 缺 Key 提示
+              data === null && busy ? h('p', { className: 'dspet-field-hint' }, t('anRunning')) : null, // 首次计算提示
+              data !== null && windows.every((item) => item.state === 'noQuota') ? h('p', { className: 'dspet-field-hint' }, t('anNoReading')) : null, // 缺读数提示
+              data !== null ? overviewCard : null, // 结论
+              data !== null ? speedCard : null, // 速度
+              data !== null ? h('div', { className: 'dspet-usage' }, windows.map(windowCard)) : null, // 三个窗口
+              data !== null && sampleOk && data.tokenPerPoint === null ? h('p', { className: 'dspet-field-hint' }, t('anNotEnough')) : null, // 样本不足提示
+              data !== null && (data.vendors ?? []).length === 0 ? h('p', { className: 'dspet-field-hint' }, t('anEmptyHint')) : null, // 该筛选下没有用量
+              data !== null ? h('div', { className: 'dspet-token-foot' }, h('span', null, `${t('tkScanned')}: ${number(data.sessions?.scanned ?? 0)}`), data.readingAgeMs !== null ? h('span', null, `${t('anStale')} ${duration(data.readingAgeMs)}`) : null) : null, // 底部说明
+              h('div', { className: 'dspet-dialog-footer' }, h('button', { type: 'button', className: 'dspet-btn', onClick: props.onClose }, t('ocClose'))), // 关闭
+            ), // 结束面板
+          ); // 结束遮罩
+        } // 结束分析面板
+
         function Pet(props) {
           const [, setLocaleRevision] = React.useState(0);
           const [position, setPosition] = React.useState(loadPosition);
@@ -1696,6 +1958,7 @@ window.__ModuleLoader__.load({
           const [submenuPos, setSubmenuPos] = React.useState({ x: 0, y: 0, ready: false }); // 二级菜单的坐标，独立测量
           const [usageOpen, setUsageOpen] = React.useState(false); // 剩余用量面板是否打开
           const [tokenOpen, setTokenOpen] = React.useState(false); // Token 用量面板是否打开
+          const [analysisOpen, setAnalysisOpen] = React.useState(false); // 用量节奏分析面板是否打开
           const [unseen, setUnseen] = React.useState(() => { try { return window.localStorage.getItem(OPENCODE_UNSEEN_KEY) === '1'; } catch (error) { return false; } }); // 未查看变动标记
           const [autoHours, setAutoHours] = React.useState(() => { try { const value = Number(window.localStorage.getItem(OPENCODE_AUTO_KEY)); return value === 6 || value === 24 ? value : 0; } catch (error) { return 0; } }); // 自动检查间隔
           const [chatOpen, setChatOpen] = React.useState(false); // 对话面板是否打开
@@ -1775,6 +2038,7 @@ window.__ModuleLoader__.load({
           const runCheckRef = React.useRef(runOpenCodeCheck); // 自动检查使用最新函数
           runCheckRef.current = runOpenCodeCheck; // 每次渲染更新引用
 
+          const analysisRef = React.useRef(null); // 节奏分析面板的句柄，供应商配置对话框靠它触发「刷新分析」之后再重算
           const runOpenCodeUsage = async (options = {}) => { // 调用 Host 额度路由
             const body = {}; // 只带非空字段，避免覆盖已保存的 Key 与来源
             if (typeof options.apiKey === 'string' && options.apiKey.trim().length > 0) body.apiKey = options.apiKey.trim(); // 本次输入的 Key
@@ -1925,6 +2189,11 @@ window.__ModuleLoader__.load({
             setMonitorMenuOpen(false); // 收起子菜单
             setTokenOpen(true); // 打开面板
           }; // 结束打开 Token 用量
+          const openAnalysis = () => { // 打开用量节奏分析面板
+            setMenu(null); // 关闭右键菜单
+            setMonitorMenuOpen(false); // 收起子菜单
+            setAnalysisOpen(true); // 打开面板
+          }; // 结束打开分析
           const onAutoHours = (value) => { // 保存自动检查频率
             setAutoHours(value); // 更新状态
             try { window.localStorage.setItem(OPENCODE_AUTO_KEY, String(value)); } catch (error) { /* 忽略存储失败 */ } // 持久化
@@ -2188,7 +2457,7 @@ window.__ModuleLoader__.load({
           }; // 结束右键处理
           const openRelay = () => { setMenu(null); setMonitorMenuOpen(false); setRelayOpen(true); }; // 打开配置框时两个菜单都收起
           const closeRelay = () => setRelayOpen(false); // 关闭配置框
-          const onRelaySaved = () => { showBubble('savedBubble', 3200); }; // 保存成功后说一句
+          const onRelaySaved = () => { showBubble('savedBubble', 3200); if (analysisOpen && analysisRef.current !== null) analysisRef.current.refresh(); }; // 保存成功后说一句；分析面板开着就顺手刷新读数，让新线路立刻有节奏结论
 
           const label = t('label');
 
@@ -2294,12 +2563,14 @@ window.__ModuleLoader__.load({
               h('button', { type: 'button', className: 'dspet-menu-item', role: 'menuitem', onClick: () => openMonitor('check', true) }, t('ocCheck')), // 立即检查
               h('button', { type: 'button', className: 'dspet-menu-item', role: 'menuitem', onClick: () => openMonitor('history', false) }, t('ocHistory')), // 查看记录
               h('button', { type: 'button', className: 'dspet-menu-item', role: 'menuitem', onClick: openUsage }, t('ocUsage')), // 剩余用量
+              h('button', { type: 'button', className: 'dspet-menu-item', role: 'menuitem', onClick: openAnalysis }, t('ocAnalysis')), // 用量节奏分析
             ) : null, // 结束二级菜单
             relayOpen ? h(RelayDialog, { t, onClose: closeRelay, onSaved: onRelaySaved }) : null, // 配置对话框
             monitorOpen ? h(OpenCodeMonitor, { t, view: monitorView, autoCheck: monitorAutoCheck, autoHours, onAutoHours, runCheck: runOpenCodeCheck, onClose: () => setMonitorOpen(false), onHistoryViewed: clearUnseen }) : null, // OpenCode 监控面板
             chatOpen ? h(ChatThread, { t, anchor: chatAnchor, messages: chatMessages, onSend: sendChat, onClose: closeChat, onClear: clearChat, loadModels: loadChatModels }) : null, // 双击弹出的对话面板，模型目录与清空由宠物侧处理
             usageOpen ? h(OpenCodeUsage, { t, runUsage: runOpenCodeUsage, onClose: () => setUsageOpen(false) }) : null, // 剩余用量面板
             tokenOpen ? h(TokenUsage, { t, onClose: () => setTokenOpen(false) }) : null, // Token 用量面板
+            analysisOpen ? h(QuotaAnalysis, { t, runUsage: runOpenCodeUsage, ref: analysisRef, onClose: () => setAnalysisOpen(false) }) : null, // 用量节奏分析面板
           );
         }
 

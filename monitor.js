@@ -420,6 +420,8 @@ export const USAGE_WINDOWS = [ // 服务端返回的三个额度窗口，顺序�
 ]; // 结束窗口定义
 const MAX_CONSOLE_ORIGIN = 'https://console.opencode.ai'; // 旧版 Console 域名，需要改写到 opencode.ai 才能取到用量
 const USAGE_TIMEOUT_MS = 15000; // 用量接口超时，超时后仍要报出余额为空而不是整块失败
+export const MAX_USAGE_HISTORY = 2000; // 额度读数最多保留的条数，按 5 小时内多次刷新估算足够覆盖一个月
+const USAGE_HISTORY_MIN_GAP_MS = 60_000; // 两次读数间隔不足一分钟就不再记录，避免密集刷新把历史撑满
 
 function clampPercent(value) { // 把百分比收敛到 0-100
   const number = numberOrNull(value); // 只接受有限数字
@@ -497,6 +499,16 @@ export async function readUsage(dir = snapshotDir()) { // 读取上一次成功�
   } // 结束容错
 } // 结束额度读取
 
+export function appendUsageHistory(previous, entry, limit = MAX_USAGE_HISTORY) { // 把本次读数追加到历史
+  const list = Array.isArray(previous) ? previous.filter((item) => item !== null && typeof item === 'object') : []; // 过滤掉异常条目
+  const last = list[list.length - 1]; // 最后一条
+  if (last && typeof last.at === 'number' && entry.at - last.at < USAGE_HISTORY_MIN_GAP_MS) { // 间隔太短
+    return list.slice(-limit); // 直接沿用原历史，避免密集刷新
+  } // 结束间隔判断
+  list.push(entry); // 追加本次读数
+  return list.slice(-limit); // 只保留最近的若干条
+} // 结束历史追加
+
 export async function writeUsage(usage, dir = snapshotDir()) { // 原子写入额度缓存
   await fs.mkdir(dir, { recursive: true, mode: 0o700 }); // 保证目录存在且仅本人可读
   const target = usageFilePath(dir); // 目标文件
@@ -545,7 +557,11 @@ export async function performUsageCheck(options = {}) { // 查询一次额度并
   } else { // 没有 Key
     errors.push('还没有保存 OpenCode API Key，无法查询用量'); // 给出可行动提示
   } // 结束 Key 判断
-  if (usage !== null) await writeUsage({ ...usage, source }, dir).catch(() => undefined); // 成功才覆盖缓存，写失败不影响返回
+  if (usage !== null) { // 只有成功读数才更新缓存与历史
+    const at = Date.parse(usage.fetchedAt); // 本次读数的时间
+    const history = appendUsageHistory(stored?.history, { at: Number.isFinite(at) ? at : Date.now(), windows: usage.windows }, MAX_USAGE_HISTORY); // 追加到读数历史，供用量分析估算换算价
+    await writeUsage({ ...usage, source, history }, dir).catch(() => undefined); // 成功才覆盖缓存，写失败不影响返回
+  } // 结束成功分支
   const current = usage ?? stored; // 本次或上次
   return { // 汇总结果
     windows: current?.windows ?? {}, // 三窗口额度

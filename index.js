@@ -9,6 +9,7 @@
  */
 import { performCheck, performUsageCheck, readHistory, readStatus, normalizeWebOrigin, KEY_REF } from './monitor.js'; // 监控实现、额度查询与凭据引用
 import { collectTokenUsage } from './token-usage.js'; // 会话日志里的 Token 用量聚合
+import { analyzeQuota } from './quota-forecast.js'; // OpenCode 额度节奏分析与预估
 
 export const inject = ['connection', 'credentials']; // 认证路由与只读凭据服务
 
@@ -17,6 +18,7 @@ const HISTORY_PATH = '/api/deepseek-pet/opencode/history'; // 历史路由绝对
 const STATUS_PATH = '/api/deepseek-pet/opencode/status'; // 当前状态路由绝对路径
 const USAGE_PATH = '/api/deepseek-pet/opencode/usage'; // OpenCode Go 剩余额度路由绝对路径
 const TOKEN_USAGE_PATH = '/api/deepseek-pet/tokens/usage'; // Token 用量统计路由绝对路径
+const OPENCODE_ANALYSIS_PATH = '/api/deepseek-pet/opencode/analysis'; // OpenCode 额度节奏分析路由绝对路径
 const MAX_KEY_LENGTH = 4096; // 限制请求体里的 Key 长度
 
 function jsonResponse(body, status = 200) { // 统一的 JSON 响应
@@ -152,11 +154,35 @@ export function apply(ctx) { // 注册监控路由
         const rawTimeZone = url.searchParams.get('timeZone') ?? ''; // 客户端所在时区
         const timeZone = /^[A-Za-z0-9_+-]+(?:\/[A-Za-z0-9_+-]+){0,2}$/.test(rawTimeZone) ? rawTimeZone : 'Asia/Shanghai'; // 只接受形状安全的时区名
         const force = url.searchParams.get('force') === '1'; // 是否强制重算，跳过缓存
-        const result = await collectTokenUsage(sessionQuery, { timeZone, force }); // 聚合会话日志里的用量
+        const vendor = (url.searchParams.get('vendor') ?? '').slice(0, 128); // 可选：只统计某个供应商
+        const model = (url.searchParams.get('model') ?? '').slice(0, 128); // 可选：只统计某个模型
+        const result = await collectTokenUsage(sessionQuery, { timeZone, force, vendor, model }); // 聚合会话日志里的用量
         return jsonResponse({ ok: true, ...result }); // 返回统计结果
       } catch (error) { // 统计失败
         return errorResponse(error, 500); // 以 500 返回原因
       } // 结束异常
     }, // 结束用量处理器
   }); // 结束 Token 用量路由
+
+  routes.register({ // OpenCode 额度节奏分析路由
+    path: OPENCODE_ANALYSIS_PATH, // 绝对注册路径
+    methods: ['GET'], // 只读：读读数历史与本地会话日志，不主动请求上游
+    requestBody: 'buffered', // 与注册协议保持一致
+    fetch: async (request) => { // 处理一次节奏分析
+      try { // 统一捕获失败
+        const sessionQuery = readSessionQuery(); // 取会话查询服务
+        if (sessionQuery === undefined) return errorResponse(new Error('当前 Harness 没有启用会话查询服务'), 501); // 没有数据源就直说
+        const url = new URL(request.url); // 解析查询参数
+        const rawTimeZone = url.searchParams.get('timeZone') ?? ''; // 客户端所在时区
+        const timeZone = /^[A-Za-z0-9_+-]+(?:\/[A-Za-z0-9_+-]+){0,2}$/.test(rawTimeZone) ? rawTimeZone : 'Asia/Shanghai'; // 只接受形状安全的时区名
+        const force = url.searchParams.get('force') === '1'; // 是否跳过会话日志缓存
+        const vendor = (url.searchParams.get('vendor') ?? '').slice(0, 128); // 供应商筛选
+        const model = (url.searchParams.get('model') ?? '').slice(0, 128); // 模型筛选
+        const result = await enqueue(() => analyzeQuota(sessionQuery, { timeZone, force, vendor, model })); // 串行执行，避免与读数的写入互相踩
+        return jsonResponse({ ok: true, ...result }); // 返回预估结果
+      } catch (error) { // 分析失败
+        return errorResponse(error, 500); // 以 500 返回原因
+      } // 结束异常
+    }, // 结束分析处理器
+  }); // 结束额度节奏分析路由
 } // 结束 apply
